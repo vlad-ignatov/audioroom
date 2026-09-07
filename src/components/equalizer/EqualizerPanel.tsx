@@ -163,7 +163,7 @@ export function EqualizerPanel() {
                 }
               />
             </Slider.Track>
-            <Slider.Thumb className="block h-3.5 w-6 rounded-[3px] border border-line bg-panel-hi hover:border-accent" />
+            <Slider.Thumb className="block h-3.5 w-6 rounded-[3px] border border-6 border-line bg-ink-faint hover:border-accent" />
           </Slider.Root>
           <span className="text-[10px] font-mono text-ink-faint">Pre</span>
         </div>

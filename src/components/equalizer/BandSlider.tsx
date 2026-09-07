@@ -57,7 +57,7 @@ export function BandSlider({ hz, value, disabled, onChange, onCommit }: Props) {
         </Slider.Track>
         <Slider.Thumb
           className={cn(
-            'block h-3.5 w-6 rounded-[3px] border border-line bg-panel-hi shadow-sm transition-colors',
+            'block h-3.5 w-6 rounded-[3px] border border-6 border-bg/70 bg-accent-dim shadow-sm transition-colors',
             'hover:border-accent focus-visible:border-accent',
           )}
         />
