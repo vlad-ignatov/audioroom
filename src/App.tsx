@@ -13,7 +13,6 @@ import { EqualizerPanel } from '@/components/equalizer/EqualizerPanel'
 import { SpacePanel } from '@/components/effects/SpacePanel'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
-import { Icon } from '@/components/ui/Icon'
 import { useDesktopIntegration } from '@/hooks/useDesktopIntegration'
 
 /**
