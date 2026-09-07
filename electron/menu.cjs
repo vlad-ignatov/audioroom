@@ -61,7 +61,21 @@ function buildMenu(send) {
     {
       label: 'Playback',
       submenu: [
-        { label: 'Play / Pause', accelerator: 'Space', click: () => send('toggle') },
+        {
+          label: 'Play / Pause',
+          // No accelerator on macOS.
+          //
+          // An unmodified key equivalent is dispatched by AppKit ahead of the
+          // focused view, so a registered Space fires while the listener is
+          // typing a filter or a preset name — and the renderer never receives
+          // the key, so no amount of focus checking there can prevent it.
+          // `registerAccelerator: false` would display the shortcut without
+          // registering it, but that option is Linux and Windows only. The
+          // renderer binds Space itself and knows what is focused, so here the
+          // item is click-only on macOS and merely advertised elsewhere.
+          ...(isMac ? {} : { accelerator: 'Space', registerAccelerator: false }),
+          click: () => send('toggle'),
+        },
         { label: 'Next Station', accelerator: 'CmdOrCtrl+Right', click: () => send('next') },
         { label: 'Previous Station', accelerator: 'CmdOrCtrl+Left', click: () => send('previous') },
         { type: 'separator' },
