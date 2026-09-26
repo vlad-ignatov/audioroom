@@ -46,7 +46,7 @@ export function ParamSlider({
         onValueChange={([v]) => onChange(v ?? min)}
         onValueCommit={onCommit}
       >
-        <Slider.Track className="relative h-1 w-full grow rounded-full bg-bg">
+        <Slider.Track className="relative h-1 w-full grow rounded-full bg-black">
           <span
             className="absolute h-full rounded-full bg-accent-dim"
             style={{ left: `${from}%`, width: `${to - from}%` }}

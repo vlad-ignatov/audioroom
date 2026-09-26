@@ -7,6 +7,7 @@ import { useEq } from '@/store/eq'
 interface Handlers {
   onOpenDirectory: () => void
   onAddStation: () => void
+  onAddFiles: () => void
 }
 
 /**
@@ -15,7 +16,7 @@ interface Handlers {
  * Commands arrive from the main process and are handled here rather than in
  * the components so that they work regardless of what is focused or open.
  */
-export function useDesktopIntegration({ onOpenDirectory, onAddStation }: Handlers): void {
+export function useDesktopIntegration({ onOpenDirectory, onAddStation, onAddFiles }: Handlers): void {
   useEffect(() => {
     if (!desktop) return
 
@@ -54,6 +55,9 @@ export function useDesktopIntegration({ onOpenDirectory, onAddStation }: Handler
         case 'add-station':
           onAddStation()
           break
+        case 'add-files':
+          onAddFiles()
+          break
       }
     }
 
@@ -63,7 +67,7 @@ export function useDesktopIntegration({ onOpenDirectory, onAddStation }: Handler
       offMenu()
       offMedia()
     }
-  }, [onOpenDirectory, onAddStation])
+  }, [onOpenDirectory, onAddStation, onAddFiles])
 
   // Keep the window title on the current station.
   useEffect(() => {

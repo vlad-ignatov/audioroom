@@ -24,9 +24,9 @@ function Toggle({
       disabled={disabled}
       aria-pressed={on}
       className={cn(
-        'inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded border border-[0.5px] px-1 text-[11px] transition-colors whitespace-nowrap',
         on
-          ? 'border-accent/50 bg-accent/15 text-accent'
+          ? 'border-accent/30 bg-accent/15 text-accent'
           : 'border-line bg-panel text-ink-faint hover:text-ink-dim',
         disabled && 'opacity-40',
       )}
@@ -177,9 +177,14 @@ export function SpacePanel() {
             ))}
           </div>
           <span className="ml-auto font-mono text-[10px] tabular-nums text-ink-faint">
-            {loudness === null
-              ? 'measuring…'
-              : `${loudness.toFixed(1)} LUFS  ${levelGainDb >= 0 ? '+' : ''}${levelGainDb.toFixed(1)} dB`}
+            {!leveling.enabled
+              ? 'off'
+              : loudness !== null
+                ? `${loudness.toFixed(1)} LUFS  ${levelGainDb >= 0 ? '+' : ''}${levelGainDb.toFixed(1)} dB`
+                : // Only claim to be measuring while there is audio to measure.
+                  status === 'idle' || status === 'error' || inert
+                  ? '—'
+                  : 'measuring…'}
           </span>
         </div>
         <p className="text-[10px] leading-relaxed text-ink-faint">

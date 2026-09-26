@@ -1,14 +1,20 @@
 # Player
 
-An online-radio player that runs entirely in the browser: a searchable, sortable,
-customisable station library, a 10-band equalizer, and a live frequency
-visualizer. TypeScript + React 19 + Vite 8, no backend.
+An Electron desktop player for online radio and local audio files: a
+searchable, sortable, customisable library, a 10-band equalizer, loudness
+levelling, and a live frequency visualizer. TypeScript + React 19 + Vite 8.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-check + production bundle
+npm run dev:app  # Vite dev server + Electron, with hot reload
+npm run package  # type-check, bundle, and build the app
 ```
+
+It started life as a browser app, and much of the design below is shaped by
+browser restrictions that the desktop shell has since removed: the main process
+adds CORS headers to every response, so every station that plays gets the full
+audio graph, and there is no mixed-content rule. The two-element engine and the
+probe remain because they cost nothing and still catch dead hosts.
 
 ## The constraint that shapes the design
 
@@ -88,9 +94,9 @@ Two things worth knowing:
   have. Each `http://` URL is retried over `https://`, which rescues a good
   share; the rest are marked *Blocked*.
 - **On `http://localhost` everything works**, because mixed-content blocking
-  only applies to https pages. The app will look perfectly healthy in
-  development and lose those stations the day it is deployed. The quality badge
-  on every row exists so this is visible from the start.
+  only applies to https pages. The app would look perfectly healthy in
+  development and lose those stations the day it was deployed. The desktop
+  build has no such rule, which is why it no longer shows a quality badge.
 
 Some servers vary their response by User-Agent — one station refuses `curl`
 outright while returning `Access-Control-Allow-Origin: *` to a browser. Station

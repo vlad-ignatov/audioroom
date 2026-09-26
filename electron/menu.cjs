@@ -38,6 +38,11 @@ function buildMenu(send) {
           click: () => send('add-station'),
         },
         {
+          label: 'Add Files…',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => send('add-files'),
+        },
+        {
           label: 'Browse Directory…',
           accelerator: 'CmdOrCtrl+F',
           click: () => send('open-directory'),

@@ -1,20 +1,51 @@
+import { useState } from 'react'
 import * as Slider from '@radix-ui/react-slider'
 import { useLibrary } from '@/store/library'
 import { usePlayer } from '@/store/player'
 import { Icon } from '@/components/ui/Icon'
 import { IconButton } from '@/components/ui/Button'
 import { Visualizer } from '@/components/visualizer/Visualizer'
-import { CapabilityBadge } from '@/components/library/CapabilityBadge'
 import { EqualizerToggleButton } from '@/components/equalizer/EqualizerPanel'
+import { SeekBar, TimeReadout } from './SeekBar'
 import { cn } from '@/lib/utils'
 
-const STATUS_TEXT: Record<string, string> = {
-  idle: 'Nothing playing',
+/**
+ * Only the states nothing else in the bar shows. Playing and paused are on the
+ * transport button, idle on the name line, and an error is its own message.
+ */
+const STATUS_TEXT: Partial<Record<string, string>> = {
   connecting: 'Connecting…',
   buffering: 'Buffering…',
-  playing: 'On air',
-  paused: 'Paused',
-  error: 'Error',
+}
+
+/**
+ * The station's favicon, or a placeholder when it has none or it will not load.
+ *
+ * The failure is tracked in state keyed to the URL. Hiding the element from
+ * the error handler instead — as this once did — leaked across stations: React
+ * reuses the same <img> for the next favicon and only swaps `src`, so an
+ * imperative `visibility: hidden` outlived the station that caused it.
+ */
+function StationArt({ src }: { src?: string }) {
+  const [failed, setFailed] = useState<string | null>(null)
+  if (src && failed !== src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="h-12 w-12 shrink-0 object-fit rounded"
+        onError={() => setFailed(src)}
+        style={{
+            background: `radial-gradient(circle, #FFF 0%, var(--color-bg) 200%)`,
+          }}
+      />
+    )
+  }
+  return (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-gradient-to-b from-ink/20 to-ink/10 text-accent">
+      <Icon name="note" size={28} />
+    </div>
+  )
 }
 
 export function PlayerBar({
@@ -24,19 +55,19 @@ export function PlayerBar({
   eqOpen: boolean
   onToggleEq: () => void
 }) {
-  const { selectedId, status, capability, message, volume, muted, queue, nowPlaying, togglePlayback, step, setVolume, toggleMute } =
+  const { selectedId, status, message, volume, muted, queue, nowPlaying, seekable, togglePlayback, step, setVolume, toggleMute } =
     usePlayer()
   // The selection, not the engine's station: the bar keeps showing what you
   // are on while it is paused or stopped.
   const station = useLibrary((s) => s.stations.find((x) => x.id === selectedId))
-  const active = status !== 'idle'
   const isLive = status === 'playing' || status === 'buffering' || status === 'connecting'
 
   return (
-    <div className="flex h-16 shrink-0 items-center gap-4 border-t border-line bg-panel px-4">
+    <div className="relative flex h-16 shrink-0 items-center gap-4 border-t border-line-soft bg-bg px-4">
+      {seekable && <SeekBar />}
       <div className="flex shrink-0 items-center gap-1">
         <IconButton label="Previous station" size="md" onClick={() => void step(-1)}>
-          <Icon name="prev" size={16} />
+          <Icon name="prev" size={18} />
         </IconButton>
         <button
           type="button"
@@ -46,64 +77,45 @@ export function PlayerBar({
           // ever been selected, so it covers the empty case too.
           onClick={() => void togglePlayback()}
           className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
+            'flex h-12 w-12 items-center justify-center rounded-full transition-colors',
             'bg-accent text-bg hover:bg-accent/90 disabled:opacity-30',
           )}
         >
           <Icon name={isLive ? 'pause' : 'play'} size={20} />
         </button>
         <IconButton label="Next station" size="md" onClick={() => void step(1)}>
-          <Icon name="next" size={16} />
+          <Icon name="next" size={18} />
         </IconButton>
       </div>
 
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        {station?.favicon ? (
-          <img
-            src={station.favicon}
-            alt=""
-            className="h-10 w-10 shrink-0 rounded border border-line object-cover"
-            onError={(e) => {
-              e.currentTarget.style.visibility = 'hidden'
-            }}
-          />
-        ) : (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-line bg-bg text-ink-faint">
-            <Icon name="globe" size={16} />
-          </div>
-        )}
+        <StationArt src={station?.favicon} />
 
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] text-ink">
+          <div className="truncate text-[14px] text-ink font-semibold">
             {station?.name ?? 'Select a station'}
           </div>
           <div className="mt-0.5 flex items-center gap-2 truncate text-[11px] text-ink-faint">
-            <span
-              className={cn(
-                'flex items-center gap-1',
-                status === 'error' && 'text-bad',
-                status === 'playing' && 'text-good',
-              )}
-            >
-              {status === 'playing' && (
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-good" />
-              )}
-              {STATUS_TEXT[status] ?? status}
-            </span>
-            {active && station && (
-              <CapabilityBadge capability={capability} reason={message ?? station.capabilityReason} />
-            )}
-            {nowPlaying ? (
+            {/* {status === 'playing' && (
+              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-good" />
+            )} */}
+            {STATUS_TEXT[status] && <span>{STATUS_TEXT[status]}</span>}
+            {seekable && <TimeReadout />}
+            {status === 'error' && message ? (
+              <span className="truncate text-bad" title={message}>
+                {message}
+              </span>
+            ) : nowPlaying ? (
               // Not every station broadcasts a track, so this replaces the
               // codec details rather than adding a third line to the bar.
               <span className="flex min-w-0 items-center gap-1.5 text-ink-dim">
-                <Icon name="volume" size={10} className="shrink-0 text-accent-dim" />
+                {/* <Icon name="volume" size={10} className="shrink-0 text-accent-dim" /> */}
                 <span className="truncate" title={nowPlaying.text}>
                   {nowPlaying.artist ? (
                     <>
                       <span className="text-ink">{nowPlaying.artist}</span>
                       {' — '}
-                      {nowPlaying.title}
+                      <span className="text-ink-dim">{nowPlaying.title}</span>
                     </>
                   ) : (
                     nowPlaying.text
@@ -120,8 +132,20 @@ export function PlayerBar({
         </div>
       </div>
 
-      <div className="hidden h-9 w-40 shrink-0 md:block lg:w-64">
+      <div className="hidden h-12 w-40 shrink-0 md:block lg:w-64 relative">
         <Visualizer bars={40} />
+        {/* Slices the bars into segments: a 1px line in the bar's background
+            colour every 4px, so each bar reads as a stack of LEDs. */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: `repeating-linear-gradient(
+              to top,
+              transparent 0 2px,
+              var(--color-bg) 2px 2.5px
+            )`,
+          }}
+        />
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
@@ -137,8 +161,8 @@ export function PlayerBar({
           aria-label="Volume"
           onValueChange={([v]) => setVolume(v ?? 0)}
         >
-          <Slider.Track className="relative h-1 w-full grow rounded-full bg-bg">
-            <Slider.Range className="absolute h-full rounded-full bg-ink-dim" />
+          <Slider.Track className="relative h-1 w-full grow rounded-full bg-black">
+            <Slider.Range className="absolute h-full rounded-full bg-accent-dim" />
           </Slider.Track>
           <Slider.Thumb className="block h-3 w-3 rounded-full bg-ink shadow hover:bg-accent" />
         </Slider.Root>

@@ -81,12 +81,12 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
         }
       }
 
-      const gap = width / bars < 4 ? 1 : 2
+      const gap = width / bars < 6 ? 1 : 1
       const barWidth = Math.max(1, width / bars - gap)
       const gradient = ctx.createLinearGradient(0, height, 0, 0)
-      gradient.addColorStop(0, 'oklch(0.60 0.12 78)')
-      gradient.addColorStop(0.65, 'oklch(0.79 0.15 78)')
-      gradient.addColorStop(1, 'oklch(0.9 0.1 90)')
+      gradient.addColorStop(0, 'oklch(0.50 0.12 78)')
+      gradient.addColorStop(0.8, 'oklch(0.75 0.15 78)')
+      gradient.addColorStop(1, 'oklch(0.95 0.1 90)')
 
       for (let i = 0; i < bars; i++) {
         // Asymmetric smoothing: rise fast so transients read, fall slowly so
@@ -101,7 +101,7 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
         const h = Math.max(minH, value * (height - 2))
         ctx.fillStyle = value > 0.01 ? gradient : 'oklch(0.32 0.012 260)'
         ctx.beginPath()
-        ctx.roundRect(x, height - h, barWidth, h, Math.min(1.5, barWidth / 2))
+        ctx.roundRect(x, height - h, barWidth, h, 0)
         ctx.fill()
       }
     }

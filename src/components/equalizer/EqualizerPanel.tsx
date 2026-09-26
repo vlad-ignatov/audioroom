@@ -6,7 +6,7 @@ import { useEq } from '@/store/eq'
 import { usePlayer } from '@/store/player'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
-import { BandSlider } from './BandSlider'
+import { BandSlider, GainTrack } from './BandSlider'
 import { cn } from '@/lib/utils'
 
 export function EqualizerPanel() {
@@ -15,6 +15,7 @@ export function EqualizerPanel() {
   const status = usePlayer((s) => s.status)
   const [naming, setNaming] = useState(false)
   const [draftName, setDraftName] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
 
   // The filter bank only exists on the Web Audio path. On a station the server
   // will not let us process, the controls stay visible but inert — hiding them
@@ -33,14 +34,14 @@ export function EqualizerPanel() {
           type="button"
           onClick={() => eq.setEnabled(!eq.enabled)}
           className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors',
+            'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors text-nowrap',
             eq.enabled
               ? 'border-accent/50 bg-accent/15 text-accent'
               : 'border-line bg-panel text-ink-faint',
           )}
           aria-pressed={eq.enabled}
         >
-          <Icon name="power" size={13} />
+          <Icon name="power" size={13} className='flex-shrink-0' />
           {eq.enabled ? 'EQ on' : 'EQ off'}
         </button>
 
@@ -93,7 +94,23 @@ export function EqualizerPanel() {
             className="flex items-center gap-1"
             onSubmit={(e) => {
               e.preventDefault()
-              eq.savePreset(draftName)
+              const name = draftName.trim()
+              if (!name) return
+              const existing = eq.findPresetByName(name)
+              if (existing?.builtin) {
+                setNameError(`“${existing.name}” is a built-in preset`)
+                return
+              }
+              // Re-saving the active preset under its own name loses nothing,
+              // so only ask when another preset would be replaced.
+              if (
+                existing &&
+                existing.id !== eq.activePresetId &&
+                !confirm(`A preset named “${existing.name}” already exists. Replace it?`)
+              ) {
+                return
+              }
+              eq.savePreset(name)
               setDraftName('')
               setNaming(false)
             }}
@@ -101,18 +118,29 @@ export function EqualizerPanel() {
             <input
               autoFocus
               value={draftName}
-              onChange={(e) => setDraftName(e.target.value)}
-              onBlur={() => setNaming(false)}
+              onChange={(e) => {
+                setDraftName(e.target.value)
+                setNameError(null)
+              }}
+              onBlur={() => {
+                setNaming(false)
+                setNameError(null)
+              }}
               placeholder="Preset name"
-              className="h-7 w-36 rounded-md border border-line bg-bg px-2 text-xs text-ink placeholder:text-ink-faint"
+              aria-invalid={nameError !== null}
+              className={cn(
+                'h-7 w-36 rounded-md border bg-bg px-2 text-xs text-ink placeholder:text-ink-faint me-1',
+                nameError ? 'border-bad' : 'border-line',
+              )}
             />
             <Button type="submit" variant="accent" size="sm" onMouseDown={(e) => e.preventDefault()}>
               Save
             </Button>
+            {nameError && <span className="text-xs text-bad">{nameError}</span>}
           </form>
         ) : (
           <Button size="sm" onClick={() => setNaming(true)}>
-            Save preset
+            Save as…
           </Button>
         )}
 
@@ -152,18 +180,8 @@ export function EqualizerPanel() {
             aria-label="Preamp"
             onValueChange={([v]) => eq.setPreamp(v ?? 0)}
           >
-            <Slider.Track className="relative w-1.5 grow rounded-full bg-bg">
-              <span className="absolute inset-x-0 top-1/2 h-px bg-line" />
-              <span
-                className="absolute inset-x-0 rounded-full bg-ink-faint"
-                style={
-                  eq.preamp >= 0
-                    ? { bottom: '50%', height: `${(eq.preamp / 12) * 50}%` }
-                    : { top: '50%', height: `${(Math.abs(eq.preamp) / 12) * 50}%` }
-                }
-              />
-            </Slider.Track>
-            <Slider.Thumb className="block h-3.5 w-6 rounded-[3px] border border-6 border-line bg-ink-faint hover:border-accent" />
+            <GainTrack value={eq.preamp} fillClassName="bg-ink-faint" />
+            <Slider.Thumb className="block h-3.5 w-6 rounded-[4px] border border-1 border-ink-dim bg-gradient-to-b from-ink-faint to-ink-dim shadow-sm transition-colors hover:border-ink hover:from-ink-dim hover:to-ink focus-visible:border-ink focus-visible:from-ink-dim focus-visible:to-ink" />
           </Slider.Root>
           <span className="text-[10px] font-mono text-ink-faint">Pre</span>
         </div>

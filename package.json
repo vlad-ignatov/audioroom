@@ -21,6 +21,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-virtual": "^3.14.10",
     "hls.js": "^1.7.2",
+    "music-metadata": "^11.15.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zustand": "^5.0.15"
@@ -52,8 +53,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json",
-      "!node_modules/**/*"
+      "package.json"
     ],
     "mac": {
       "category": "public.app-category.music",

@@ -20,6 +20,40 @@
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
+@layer components {
+  /*
+   * Tick marks for a ±12 dB fader: a long line at +12, 0 and -12, a short one
+   * at every dB between, on both sides of the track. Drawn with backgrounds so
+   * the marks cost no DOM and follow whatever height the fader has. The
+   * repeating layer tiles the height in 24 steps with a 1px line at the top of
+   * each; the 25th line falls on the bottom edge, where the -12 mark is.
+   */
+  .db-scale {
+    --tick: rgba(from var(--color-ink-faint) r g b / 0.5);
+    --tick-major: var(--color-ink-faint);
+    --major-w: 8px;
+    --minor-w: 3px;
+    background-image:
+      linear-gradient(var(--tick-major), var(--tick-major)),
+      linear-gradient(var(--tick-major), var(--tick-major)),
+      linear-gradient(var(--tick-major), var(--tick-major)),
+      linear-gradient(var(--tick-major), var(--tick-major)),
+      linear-gradient(var(--tick-major), var(--tick-major)),
+      linear-gradient(var(--tick-major), var(--tick-major)),
+      linear-gradient(var(--tick) 1px, transparent 1px),
+      linear-gradient(var(--tick) 1px, transparent 1px);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat-y, repeat-y;
+    background-size:
+      var(--major-w) 1px, var(--major-w) 1px, var(--major-w) 1px,
+      var(--major-w) 1px, var(--major-w) 1px, var(--major-w) 1px,
+      var(--minor-w) calc(100% / 24), var(--minor-w) calc(100% / 24);
+    background-position:
+      left 0, left 50%, left 100%,
+      right 0, right 50%, right 100%,
+      4px 0, calc(100% - 4px) 0;
+  }
+}
+
 @layer base {
   html {
     color-scheme: dark;

@@ -26,6 +26,9 @@ export interface Station {
   tags: string[]
   votes?: number
   isHls: boolean
+  /** Track length in seconds; only local files have one. */
+  duration?: number
+  album?: string
   /** radio-browser stationuuid, absent for hand-added stations. */
   sourceUuid?: string
 

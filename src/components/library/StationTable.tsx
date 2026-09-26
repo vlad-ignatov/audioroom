@@ -15,6 +15,11 @@ interface Props {
   onBrowseDirectory: () => void
 }
 
+/** Height of the sticky header row (h-9), which sits inside the scroller above the rows. */
+const HEADER_HEIGHT = 36
+/** Height of a station row without a note (min-h-8); rows with notes grow and are measured. */
+const ROW_HEIGHT = 32
+
 export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
   const rows = useVisibleStations()
   const columns = useTable((s) => s.columns)
@@ -65,17 +70,42 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 44,
+    estimateSize: () => ROW_HEIGHT,
+    // Measured heights must follow the station, not the slot. Rows are not all
+    // one height (a note adds a line), and an insert or re-sort shifts every
+    // station to a new index while React keeps its DOM node — so a height
+    // keyed by index would be applied to whichever station now sits there.
+    getItemKey: (index) => rows[index]!.id,
     overscan: 10,
+    // The header shares the scroller, so row offsets start below it; and as
+    // it is sticky, a row scrolled to the very top would hide behind it.
+    scrollMargin: HEADER_HEIGHT,
+    scrollPaddingStart: HEADER_HEIGHT,
   })
+
+  /**
+   * Keep the selected row in view.
+   *
+   * Next/previous shortcuts and the player bar change the selection without
+   * touching the rows, and the transport shortcuts deliberately drop row focus
+   * (see releaseRowFocus), so no focus-driven scrolling happens on its own.
+   * Rows are read through a ref so filtering or sorting does not yank the
+   * scroll position back to the selection on every keystroke.
+   */
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
+  useEffect(() => {
+    if (!selectedId) return
+    const index = rowsRef.current.findIndex((r) => r.id === selectedId)
+    if (index >= 0) virtualizer.scrollToIndex(index, { align: 'center', behavior: 'smooth' })
+  }, [selectedId, virtualizer])
 
   const filtersActive =
     filters.query !== '' ||
     filters.favoritesOnly ||
     filters.tags.length > 0 ||
     filters.countries.length > 0 ||
-    filters.codecs.length > 0 ||
-    filters.capability !== 'any'
+    filters.codecs.length > 0
 
   const canDrag = manualOrder && !filtersActive
 
@@ -140,7 +170,7 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
                     top: 0,
                     left: 0,
                     width: '100%',
-                    transform: `translateY(${item.start}px)`,
+                    transform: `translateY(${item.start - HEADER_HEIGHT}px)`,
                   }}
                   className={cn(
                     dragOverId === station.id && 'border-t-2 border-t-accent',

@@ -51,7 +51,8 @@ export function StationDialog({ open, onOpenChange, station, onNotify }: Props) 
     })
   }, [open, station])
 
-  const urlValid = /^https?:\/\/.+/i.test(form.url.trim())
+  // file:// too, so a local file's name and notes stay editable.
+  const urlValid = /^(https?|file):\/\/.+/i.test(form.url.trim())
   const duplicate = !station && urlValid && hasUrl(form.url.trim())
   const canSave = form.name.trim() !== '' && urlValid && !duplicate
 

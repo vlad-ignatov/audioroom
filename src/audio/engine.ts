@@ -1,5 +1,5 @@
 import type Hls from 'hls.js'
-import { BAND_Q, BAND_COUNT, EQ_FREQUENCIES, dbToGain, filterTypeForBand } from './eq'
+import { BAND_Q, BAND_COUNT, EQ_FREQUENCIES, dbToGain, eqPeakGainDb, filterTypeForBand } from './eq'
 import { probeStream } from './probe'
 import { DEFAULT_REVERB, renderImpulseResponse, type ImpulseOptions } from './fx'
 import {
@@ -11,7 +11,7 @@ import {
   measureStreamLoudness,
 } from './loudness'
 import type { Capability } from '@/types/station'
-import { isDesktop } from '@/lib/desktop'
+import { isDesktop, isLocalFile, playableUrl } from '@/lib/desktop'
 
 export type EngineStatus =
   | 'idle'
@@ -30,6 +30,11 @@ export interface EngineState {
   pipeline: Pipeline
   stationId: string | null
   capability: Capability
+  /**
+   * True while a local file is loaded. A file has a position and a length,
+   * pauses in place, and can be seeked; a live stream has none of that.
+   */
+  seekable: boolean
   /** User-facing explanation for a degraded or failed station. */
   message?: string
   /** Most recent gated loudness of the stream, LUFS. */
@@ -52,6 +57,12 @@ export interface PlayOutcome {
   capability: Capability
   url: string
   reason?: string
+}
+
+/** Where a local file is, in seconds. `duration` is null until known. */
+export interface Timing {
+  position: number
+  duration: number | null
 }
 
 const MAX_RETRIES = 3
@@ -95,10 +106,11 @@ const LIVE_GRAPH_KEY = 'audio.liveStreamGraphOk'
 const PREROLL_TIMEOUT_MS = 6000
 
 /**
- * How far the live reading must diverge from the established correction before
- * it is treated as a real change rather than measurement noise.
+ * How much live audio to measure when the silent pre-roll could not, or when
+ * the track changes mid-stream. Long enough for the gating to see past an
+ * intro; short enough that a wrong level is not endured for long.
  */
-const DRIFT_TOLERANCE_DB = 3
+const LIVE_WINDOW_S = 6
 
 /** Fade-in when the correction lands: long enough to avoid a click. */
 const LEVEL_FADE_S = 0.08
@@ -156,6 +168,16 @@ export class AudioEngine {
   private streamToken = 0
   /** True while an el.play() promise is in flight; a retry must not abort it. */
   private pendingPlay = false
+  /**
+   * Whether the loaded source is a local file rather than a live stream.
+   *
+   * Decides pause semantics (hold the position vs. drop the connection), what
+   * `ended` means (the track is over vs. the stream broke) and whether an error
+   * is worth a reconnect.
+   */
+  private isFile = false
+  private timeListeners = new Set<(t: Timing) => void>()
+  private onEnded: (() => void) | null = null
   /** Fires if a station never reaches 'playing' within a reasonable time. */
   private watchdog: number | null = null
   /** Guards against a slow probe for station A landing after the user picked B. */
@@ -177,6 +199,7 @@ export class AudioEngine {
     pipeline: null,
     stationId: null,
     capability: 'unknown',
+    seekable: false,
     loudnessLufs: null,
     levelGainDb: 0,
   }
@@ -203,6 +226,14 @@ export class AudioEngine {
   private limiter: DynamicsCompressorNode | null = null
   private meter: LoudnessMeter | null = null
   /**
+   * The loudness the current correction was computed from. Levelling is
+   * measure-once: a station or track is inspected when it starts and the
+   * result holds until something changes, so the listener never hears the
+   * volume wander with the music. Kept so a change of target can be applied
+   * without measuring again.
+   */
+  private measuredLufs: number | null = null
+  /**
    * Analyser fed straight from the source, before the volume gain.
    *
    * Anything that needs to know whether audio is *arriving* must read here:
@@ -213,7 +244,7 @@ export class AudioEngine {
   private meterTimer: number | null = null
   private levelingEnabled = true
   private levelingTarget = DEFAULT_TARGET_LUFS
-  /** Loudness carried over from a previous play, applied before measuring. */
+  /** Loudness remembered from a previous play, used only if measuring fails. */
   private seedLufs: number | null = null
   private onLoudness: ((lufs: number, gainDb: number) => void) | null = null
 
@@ -250,25 +281,78 @@ export class AudioEngine {
       this.clearWatchdog()
       this.patch({ status: 'playing' })
     })
+    // A paused stream is still attached (see pause()), and its connection may
+    // stall or be dropped by the server while nobody is listening. None of
+    // that is news: resuming reconnects anyway.
+    const held = () => this.state.status === 'paused'
     el.addEventListener('waiting', () => {
-      if (current()) this.patch({ status: 'buffering' })
+      if (current() && !held()) this.patch({ status: 'buffering' })
     })
     // 'stalled' means no data has arrived for a few seconds. For a live radio
     // stream that is normal while connecting, not a failure — reloading here
     // aborts the in-flight play() and kills a connection that was about to
     // succeed. Report it, but let the watchdog decide if it is actually stuck.
     el.addEventListener('stalled', () => {
-      if (current()) this.patch({ status: 'buffering' })
+      if (current() && !held()) this.patch({ status: 'buffering' })
     })
     el.addEventListener('error', () => {
+      if (!current() || this.pendingPlay || held()) return
       // While play() is pending its rejection carries the real reason, and
       // reloading now would be the thing that rejects it.
-      if (current() && !this.pendingPlay) this.scheduleRetry(describeMediaError(el.error))
+      if (this.isFile) {
+        // A file that failed once will fail again; there is no connection to
+        // re-establish.
+        this.patch({ status: 'error', message: describeFileError(el.error) })
+        return
+      }
+      this.scheduleRetry(describeMediaError(el.error))
     })
     el.addEventListener('ended', () => {
-      if (current() && !this.pendingPlay) this.scheduleRetry('Stream ended unexpectedly.')
+      if (!current() || this.pendingPlay || held()) return
+      if (this.isFile) {
+        this.finishFile()
+        return
+      }
+      this.scheduleRetry('Stream ended unexpectedly.')
     })
+    // Position reporting, only meaningful for files. A live stream's
+    // currentTime counts up too, but the number tells the listener nothing.
+    const report = () => {
+      if (current() && this.isFile) this.emitTiming(el)
+    }
+    for (const type of ['timeupdate', 'durationchange', 'loadedmetadata', 'seeking', 'seeked']) {
+      el.addEventListener(type, report)
+    }
     return el
+  }
+
+  private emitTiming(el: HTMLAudioElement | null): void {
+    const timing: Timing =
+      el && this.isFile
+        ? {
+            position: el.currentTime,
+            duration: Number.isFinite(el.duration) ? el.duration : null,
+          }
+        : { position: 0, duration: null }
+    for (const fn of this.timeListeners) fn(timing)
+  }
+
+  /**
+   * A local file reached its end.
+   *
+   * Left on the station, rewound and paused, so pressing play repeats it;
+   * the owner is told so it can decide to move on to the next track.
+   */
+  private finishFile(): void {
+    this.stopMetering()
+    const el = this.active
+    if (el) {
+      el.pause()
+      el.currentTime = 0
+    }
+    this.patch({ status: 'paused', message: undefined })
+    this.emitTiming(el)
+    this.onEnded?.()
   }
 
   // ---------------------------------------------------------------- graph ---
@@ -291,7 +375,7 @@ export class AudioEngine {
     this.source = ctx.createMediaElementSource(this.graphEl)
 
     this.preamp = ctx.createGain()
-    this.preamp.gain.value = dbToGain(this.preampDb)
+    this.preamp.gain.value = dbToGain(this.preGainDb())
 
     this.filters = EQ_FREQUENCIES.map((hz, i) => {
       const f = ctx.createBiquadFilter()
@@ -318,15 +402,20 @@ export class AudioEngine {
     this.levelGain = ctx.createGain()
     this.levelGain.gain.value = 1
 
-    // Boosting a quiet station can push peaks past full scale. A limiter set
-    // just below 0 dBFS is inaudible until that happens and prevents clipping
-    // when it does.
+    // A safety net against clipping, not a sound-shaping stage. It is a
+    // full-band compressor: whenever it acts, a bass hit turns *everything*
+    // down, heard as vocals ducking on each kick. So the threshold sits at full
+    // scale, where commercial masters already peak and where nothing short of
+    // a genuine over reaches it. At 0 dB the node's automatic makeup gain is
+    // also exactly 0 dB; any lower threshold adds makeup gain that makes the
+    // whole signal hotter and the limiter act even more often. EQ boosts get
+    // their headroom from the pre-gain instead (see preGainDb).
     this.limiter = ctx.createDynamicsCompressor()
-    this.limiter.threshold.value = -2
+    this.limiter.threshold.value = 0
     this.limiter.knee.value = 0
     this.limiter.ratio.value = 20
-    this.limiter.attack.value = 0.003
-    this.limiter.release.value = 0.25
+    this.limiter.attack.value = 0.001
+    this.limiter.release.value = 0.1
 
     // Measure the station as broadcast, upstream of our own correction, so the
     // reading does not chase the gain we just applied.
@@ -463,6 +552,7 @@ export class AudioEngine {
   async play(req: PlayRequest): Promise<PlayOutcome> {
     const gen = ++this.generation
     this.teardownStream()
+    this.isFile = isLocalFile(req.url)
 
     // Safari grants the right to create and start an AudioContext only for the
     // duration of the gesture that triggered this call, and it does not mute an
@@ -483,6 +573,7 @@ export class AudioEngine {
       status: 'connecting',
       stationId: req.stationId,
       capability: 'unknown',
+      seekable: this.isFile,
       loudnessLufs: null,
       message: undefined,
       pipeline: null,
@@ -502,6 +593,16 @@ export class AudioEngine {
       return outcome
     }
 
+    // A file that has been moved or deleted fails inside the media pipeline
+    // with the same error as one that will not decode. Ask first, so the
+    // listener is told which it is.
+    if (this.isFile && !(await fileExists(outcome.url))) {
+      if (gen !== this.generation) return outcome
+      const reason = 'File not found. Was it moved or deleted?'
+      this.patch({ status: 'error', message: reason })
+      return { capability: 'unavailable', url: outcome.url, reason }
+    }
+
     // 'unknown' means the probe timed out rather than being refused; give the
     // full pipeline a chance instead of pre-emptively degrading.
     let useGraph = outcome.capability === 'full' || outcome.capability === 'unknown'
@@ -516,7 +617,8 @@ export class AudioEngine {
     // Begin measuring now, in parallel with connecting. The graph is silenced
     // until the answer arrives, so nothing is ever heard at the wrong level —
     // which is what made switching to a loud station jarring.
-    const pendingLevel = useGraph ? this.beginLevel(outcome.url, req.knownLufs) : null
+    const pendingLevel = useGraph ? this.beginLevel(outcome.url) : null
+    this.seedLufs = req.knownLufs ?? null
 
     try {
       // attach() may downgrade a graph request it cannot honour, so its verdict
@@ -537,8 +639,10 @@ export class AudioEngine {
         message: outcome.reason,
       })
       if (pipeline === 'graph' && pendingLevel) {
-        await this.settleLevel(pendingLevel, gen)
-        this.startMetering()
+        const measured = await this.settleLevel(pendingLevel, gen)
+        // No silent measurement (a codec the decoder will not take piecemeal,
+        // an HLS playlist): take one window of what is playing instead.
+        if (!measured) this.measureLive(gen)
       }
       // Chromium routes live streams correctly; the check exists for WebKit,
       // which the desktop build never runs on.
@@ -558,6 +662,13 @@ export class AudioEngine {
       const blockedByAutoplay = err instanceof DOMException && err.name === 'NotAllowedError'
       if (blockedByAutoplay) {
         return { ...outcome, reason: 'Your browser blocked autoplay. Press play again to start.' }
+      }
+      if (this.isFile) {
+        // Not a reachability question: the file is there, it just will not
+        // decode. Say so, and leave the capability alone.
+        const reason = describeFileError(this.active?.error ?? null)
+        this.patch({ message: reason })
+        return { capability: 'unavailable', url: outcome.url, reason }
       }
       this.patch({ capability: 'unavailable' })
       return { capability: 'unavailable', url: outcome.url, reason: message }
@@ -589,7 +700,7 @@ export class AudioEngine {
     if (/\.m3u8(\?|$)/i.test(url)) {
       await this.attachHls(el, url)
     } else {
-      el.src = url
+      el.src = playableUrl(url)
       el.load()
     }
 
@@ -650,8 +761,15 @@ export class AudioEngine {
 
   setLevelingEnabled(on: boolean): void {
     this.levelingEnabled = on
-    if (!on) this.applyLevelGain(0)
-    else this.updateLevelGain()
+    if (!on) {
+      this.stopMetering()
+      this.applyLevelGain(0)
+      return
+    }
+    this.updateLevelGain()
+    // Switched on mid-play: nothing was measured while it was off, so start
+    // now rather than waiting for the next station.
+    if (this.state.loudnessLufs === null) this.remeasure()
   }
 
   setLevelingTarget(lufs: number): void {
@@ -673,18 +791,16 @@ export class AudioEngine {
    * inaudible — the element has not started producing samples yet — and
    * guarantees nothing is ever heard at the wrong level.
    */
-  private beginLevel(url: string, knownLufs: number | undefined): Promise<number | null> {
+  private beginLevel(url: string): Promise<number | null> {
     if (!this.levelingEnabled) {
       this.setLevelGainNow(1)
       return Promise.resolve(null)
     }
 
     this.setLevelGainNow(0)
-    if (knownLufs !== undefined) return Promise.resolve(knownLufs)
-
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), PREROLL_TIMEOUT_MS)
-    return measureStreamLoudness(url, { signal: controller.signal }).finally(() =>
+    return measureStreamLoudness(playableUrl(url), { signal: controller.signal }).finally(() =>
       clearTimeout(timer),
     )
   }
@@ -692,22 +808,27 @@ export class AudioEngine {
   /**
    * Apply the correction and bring the graph up, once audio is ready.
    *
+   * Returns whether a measurement was actually obtained. Without one the
+   * remembered level from a previous play is used, so the station at least
+   * starts near where it was last time rather than raw.
+   *
    * The fade is short enough to be heard as the start of playback rather than
    * as a fade, and long enough to avoid a click from a step change in gain.
    */
-  private async settleLevel(pending: Promise<number | null>, gen: number): Promise<void> {
+  private async settleLevel(pending: Promise<number | null>, gen: number): Promise<boolean> {
     let lufs: number | null = null
     try {
       lufs = await pending
     } catch {
       lufs = null
     }
-    if (gen !== this.generation) return
+    if (gen !== this.generation) return true
 
-    this.seedLufs = lufs
-    const db = lufs === null ? 0 : correctionDb(lufs, this.levelingTarget)
+    const measured = lufs !== null
+    this.measuredLufs = lufs ?? this.seedLufs
+    const db = this.measuredLufs === null ? 0 : correctionDb(this.measuredLufs, this.levelingTarget)
 
-    if (!this.ctx || !this.levelGain) return
+    if (!this.ctx || !this.levelGain) return measured
     const now = this.ctx.currentTime
     const target = this.levelingEnabled ? dbToGain(db) : 1
     this.levelGain.gain.cancelScheduledValues(now)
@@ -719,6 +840,7 @@ export class AudioEngine {
       this.patch({ loudnessLufs: lufs })
       this.onLoudness?.(lufs, db)
     }
+    return measured
   }
 
   /** Set the level gain with no ramp; only safe while nothing is audible. */
@@ -737,56 +859,58 @@ export class AudioEngine {
     this.patch({ levelGainDb: this.levelingEnabled ? db : 0 })
   }
 
+  /** Re-derive the gain from the standing measurement, e.g. after a target change. */
   private updateLevelGain(): void {
-    const lufs = this.meter?.lufs ?? this.seedLufs
-    if (lufs === null || lufs === undefined) {
+    if (this.measuredLufs === null) {
       this.applyLevelGain(0)
       return
     }
-    this.applyLevelGain(correctionDb(lufs, this.levelingTarget))
+    this.applyLevelGain(correctionDb(this.measuredLufs, this.levelingTarget))
   }
 
   /**
-   * Sample the meter while a station plays.
+   * Measure one window of live audio and apply the result once.
    *
-   * The first correction waits for a few seconds of audio, because a reading
-   * taken over one window is dominated by whatever transient happened to be in
-   * it. After that it updates continuously but slowly.
+   * Used when the silent pre-roll could not measure, and when levelling is
+   * switched on mid-play. The meter samples for LIVE_WINDOW_S, the correction
+   * is ramped in slowly enough not to be heard as a change, and then the
+   * meter stops: nothing here follows the music.
    */
-  private startMetering(): void {
+  private measureLive(gen: number): void {
     this.stopMetering()
-    this.meter?.reset()
-    if (!this.meter) return
-
-    // Whether the level was already established before playback began.
-    const seeded = this.seedLufs !== null
+    if (!this.meter || !this.levelingEnabled) return
+    const meter = this.meter
+    meter.reset()
 
     this.meterTimer = window.setInterval(() => {
-      const meter = this.meter
-      if (!meter) return
+      if (gen !== this.generation) {
+        this.stopMetering()
+        return
+      }
       meter.sample()
+      if (meter.seconds < LIVE_WINDOW_S) return
 
+      this.stopMetering()
       const lufs = meter.lufs
+      // All silence or noise floor: nothing to level against, keep what we had.
       if (lufs === null) return
-      // With no pre-roll figure, this meter is what drives the display.
-      if (!seeded) this.patch({ loudnessLufs: lufs })
-
-      // Below this the reading is still settling.
-      if (meter.seconds < 3) return
-
+      this.measuredLufs = lufs
       const db = correctionDb(lufs, this.levelingTarget)
-
-      // A pre-roll measurement is the more accurate of the two: it runs the
-      // full BS.1770 block algorithm over a contiguous stretch, where this one
-      // samples windows on a timer and reads a decibel or two hot. So once a
-      // level is established, only step in when the stream has genuinely
-      // changed character rather than chasing that difference.
-      if (seeded && Math.abs(db - this.state.levelGainDb) < DRIFT_TOLERANCE_DB) return
-
       this.applyLevelGain(db)
       this.patch({ loudnessLufs: lufs })
       this.onLoudness?.(lufs, db)
     }, SAMPLE_INTERVAL_MS)
+  }
+
+  /**
+   * Level what is playing as if it had just started.
+   *
+   * Only meaningful mid-play on the graph; a paused or plain-pipeline station
+   * has nothing to measure.
+   */
+  private remeasure(): void {
+    if (this.state.status !== 'playing' || this.state.pipeline !== 'graph') return
+    this.measureLive(this.generation)
   }
 
   private stopMetering(): void {
@@ -869,23 +993,96 @@ export class AudioEngine {
   stop(): void {
     this.generation++
     this.teardownStream()
-    this.patch({ status: 'idle', pipeline: null, stationId: null, message: undefined })
+    this.patch({ status: 'idle', pipeline: null, stationId: null, seekable: false, message: undefined })
   }
 
   /**
-   * Release the stream but stay on the station.
+   * Stop listening but stay on the station, and stay the system's player.
    *
-   * A live stream has no meaningful paused position: holding the connection
-   * open would keep buffering audio the listener is not hearing, and resuming
-   * would play it from behind live. So pausing disconnects, and resuming
-   * reconnects at whatever is on air then — which is what a listener expects
-   * from radio. Only the station stays selected.
+   * The element is paused rather than released. macOS (and Chromium's media
+   * session on every platform) only treats the app as the Now Playing app
+   * while it holds a paused player; an element with its source removed drops
+   * out, and the next play from the keyboard, Control Center or a headphone
+   * sensor goes to some other app instead.
+   *
+   * A live stream still has no meaningful paused position, so resuming a
+   * stream does not continue this element: resume() declines and the caller
+   * reconnects, at whatever is on air then. Holding the connection costs
+   * little — once the element stops reading, the server is throttled by TCP.
+   * A file keeps its position and resume() continues it.
    */
   pause(): void {
     if (this.state.status === 'idle' || this.state.status === 'paused') return
     this.generation++
-    this.teardownStream()
-    this.patch({ status: 'paused', pipeline: null, message: undefined })
+    const el = this.active
+    // Still connecting: there is no player for the OS to hold on to, and a
+    // pending play() is better abandoned than paused.
+    if (!el || (!this.isFile && (this.pendingPlay || this.state.status === 'connecting'))) {
+      this.teardownStream()
+      this.patch({ status: 'paused', pipeline: null, message: undefined })
+      return
+    }
+    this.clearWatchdog()
+    this.clearDetect()
+    this.stopMetering()
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
+    this.hls?.stopLoad()
+    el.pause()
+    this.patch({ status: 'paused', message: undefined })
+  }
+
+  /**
+   * Continue a paused file from where it stopped.
+   *
+   * Returns false when there is nothing to continue — a paused live stream has
+   * been disconnected and needs a fresh play() — so the caller knows to do that.
+   */
+  async resume(): Promise<boolean> {
+    const el = this.active
+    if (!this.isFile || !el || this.state.status !== 'paused') return false
+    this.generation++
+    if (this.ctx?.state === 'suspended') await this.ctx.resume()
+    this.pendingPlay = true
+    try {
+      await el.play()
+    } catch (err) {
+      this.patch({ status: 'error', message: err instanceof Error ? err.message : 'Playback failed.' })
+      return true
+    } finally {
+      this.pendingPlay = false
+    }
+    return true
+  }
+
+  /** Jump to a position in the loaded file. Ignored for streams. */
+  seek(seconds: number): void {
+    const el = this.active
+    if (!this.isFile || !el) return
+    const max = Number.isFinite(el.duration) ? el.duration : seconds
+    el.currentTime = Math.min(Math.max(0, seconds), max)
+    this.emitTiming(el)
+  }
+
+  /** Position updates for the loaded file; fires immediately with the current state. */
+  subscribeTime(fn: (t: Timing) => void): () => void {
+    this.timeListeners.add(fn)
+    fn(
+      this.active && this.isFile
+        ? {
+            position: this.active.currentTime,
+            duration: Number.isFinite(this.active.duration) ? this.active.duration : null,
+          }
+        : { position: 0, duration: null },
+    )
+    return () => this.timeListeners.delete(fn)
+  }
+
+  /** Called when a local file plays through to its end. */
+  setEndedListener(fn: (() => void) | null): void {
+    this.onEnded = fn
   }
 
   private teardownStream(): void {
@@ -907,10 +1104,11 @@ export class AudioEngine {
       el.load()
     }
     this.active = null
+    if (this.isFile) this.emitTiming(null)
   }
 
   private scheduleRetry(reason: string): void {
-    if (!this.active || this.retryTimer !== null) return
+    if (!this.active || this.retryTimer !== null || this.state.status === 'paused') return
     const el = this.active
     const url = el.currentSrc || el.src
     if (!url) return
@@ -953,25 +1151,59 @@ export class AudioEngine {
   }
 
   setBandGain(index: number, db: number): void {
+    this.writeBand(index, db)
+    this.updatePreGain()
+  }
+
+  setAllGains(gains: number[]): void {
+    for (let i = 0; i < BAND_COUNT; i++) this.writeBand(i, gains[i] ?? 0)
+    this.updatePreGain()
+  }
+
+  private writeBand(index: number, db: number): void {
     this.gains[index] = db
     const f = this.filters[index]
     if (f && this.ctx) f.gain.setTargetAtTime(db, this.ctx.currentTime, 0.01)
   }
 
-  setAllGains(gains: number[]): void {
-    for (let i = 0; i < BAND_COUNT; i++) this.setBandGain(i, gains[i] ?? 0)
-  }
-
   setPreamp(db: number): void {
     this.preampDb = db
+    this.updatePreGain()
+  }
+
+  /**
+   * The gain applied ahead of the filter bank, in dB.
+   *
+   * A boost can only be clean if there is room above the signal for it:
+   * material mastered to 0 dBFS plus +8 dB of bass is 8 dB over, and the
+   * limiter would have to duck the whole mix to hold it. So the largest boost
+   * the current curve applies is cancelled automatically, and the curve then
+   * shapes the tone without raising peaks, at the cost of some loudness,
+   * which the volume control gives back. It depends only on the curve, never
+   * on the music, so it cannot pump.
+   *
+   * The user's preamp is an offset from that clip-safe level, not an
+   * alternative to it: every position of the slider is heard, and pushing it
+   * above 0 is a deliberate choice to drive the limiter.
+   *
+   * With the EQ bypassed the preamp goes too — it is part of the equalizer.
+   */
+  private preGainDb(): number {
+    if (!this.eqEnabled) return 0
+    const rate = this.ctx?.sampleRate ?? 48000
+    return this.preampDb - eqPeakGainDb(this.gains, rate)
+  }
+
+  private updatePreGain(): void {
     if (this.preamp && this.ctx) {
-      this.preamp.gain.setTargetAtTime(dbToGain(db), this.ctx.currentTime, 0.01)
+      this.preamp.gain.setTargetAtTime(dbToGain(this.preGainDb()), this.ctx.currentTime, 0.01)
     }
   }
 
   /** Bypass routes around the filter bank without tearing the graph down. */
   setEqEnabled(enabled: boolean): void {
     this.eqEnabled = enabled
+    this.updatePreGain()
     this.rebuildChain()
   }
 
@@ -1052,6 +1284,28 @@ function describeMediaError(err: MediaError | null): string {
       return 'Stream format unsupported, or blocked by the browser.'
     default:
       return 'Playback error.'
+  }
+}
+
+/** Whether the main process can find a local file; errs on the side of yes. */
+async function fileExists(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(playableUrl(url), { method: 'HEAD', cache: 'no-store' })
+    return res.status !== 404
+  } catch {
+    return true
+  }
+}
+
+function describeFileError(err: MediaError | null): string {
+  switch (err?.code) {
+    case MediaError.MEDIA_ERR_NETWORK:
+      return 'Could not read the file. Is the drive still connected?'
+    case MediaError.MEDIA_ERR_DECODE:
+    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return 'This file format is not supported.'
+    default:
+      return describeMediaError(err)
   }
 }
 

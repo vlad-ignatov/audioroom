@@ -2,7 +2,6 @@ import { memo } from 'react'
 import type { Station } from '@/types/station'
 import type { ColumnId } from '@/store/table'
 import { Icon } from '@/components/ui/Icon'
-import { CapabilityBadge } from './CapabilityBadge'
 import { cn, formatRelative } from '@/lib/utils'
 
 interface Props {
@@ -25,8 +24,6 @@ interface Props {
 
 function Cell({ id, station }: { id: ColumnId; station: Station }) {
   switch (id) {
-    case 'quality':
-      return <CapabilityBadge capability={station.capability} reason={station.capabilityReason} />
     case 'tags':
       return (
         <div className="flex gap-1 overflow-hidden">
@@ -95,7 +92,7 @@ export const StationRow = memo(function StationRow({
       }}
       style={{ gridTemplateColumns: template }}
       className={cn(
-        'group grid h-8 items-center gap-3 border-b border-line-soft px-3 text-[13px] outline-none',
+        'group grid min-h-8 items-center gap-3 border-b py-1 border-line-soft px-3 text-[13px] outline-none',
         'hover:bg-bg-raised focus-visible:bg-bg-raised',
         isSelected && 'bg-accent/8',
         station.capability === 'unavailable' && 'opacity-55',

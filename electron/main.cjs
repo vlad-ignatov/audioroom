@@ -10,6 +10,8 @@ const { app, BrowserWindow, session, shell, ipcMain, globalShortcut } = require(
 const path = require('node:path')
 const windowState = require('./window-state.cjs')
 const { buildMenu } = require('./menu.cjs')
+const localFiles = require('./local-files.cjs')
+const libraryDb = require('./library-db.cjs')
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173'
 const isDev = !app.isPackaged
@@ -137,6 +139,9 @@ function createWindow() {
   return win
 }
 
+// Scheme privileges are read once, before ready; registering later is a no-op.
+localFiles.registerScheme()
+
 // A second launch should focus the existing window, not start a rival player.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -150,12 +155,20 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     installCorsBypass(session.defaultSession)
+    localFiles.install(() => mainWindow)
+    libraryDb.install()
     buildMenu(send)
     createWindow()
 
     // Hardware media keys. Registration fails harmlessly if another app owns
     // them, so a failure is not worth reporting to the user.
-    const keys = {
+    //
+    // Not on macOS. There the keys, Control Center and headphone controls all
+    // reach the Now Playing app through the renderer's media session, which
+    // Chromium wires to the system for us. Grabbing the keys here needs
+    // Accessibility permission, fails silently without it, and when it does
+    // succeed it switches Chromium's own media-key handling off.
+    const keys = process.platform === 'darwin' ? {} : {
       MediaPlayPause: 'toggle',
       MediaNextTrack: 'next',
       MediaPreviousTrack: 'previous',
@@ -183,6 +196,7 @@ ipcMain.on('now-playing', (_event, text) => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  libraryDb.close()
 })
 
 app.on('window-all-closed', () => {

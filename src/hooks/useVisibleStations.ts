@@ -4,17 +4,8 @@ import { useLibrary } from '@/store/library'
 import { useTable, type ColumnId, type Filters } from '@/store/table'
 import { normalize } from '@/lib/utils'
 
-/** Rank used when sorting by the `quality` column. */
-const CAPABILITY_RANK: Record<Station['capability'], number> = {
-  full: 0,
-  unknown: 1,
-  'playback-only': 2,
-  unavailable: 3,
-}
-
 function matches(s: Station, f: Filters, q: string): boolean {
   if (f.favoritesOnly && !s.favorite) return false
-  if (f.capability !== 'any' && s.capability !== f.capability) return false
   if (f.tags.length > 0 && !f.tags.some((t) => s.tags.includes(t))) return false
   if (f.countries.length > 0 && !(s.country && f.countries.includes(s.country))) return false
   if (f.codecs.length > 0 && !(s.codec && f.codecs.includes(s.codec))) return false
@@ -34,8 +25,6 @@ function valueFor(s: Station, id: ColumnId): string | number {
       return s.favorite ? 0 : 1
     case 'name':
       return normalize(s.name)
-    case 'quality':
-      return CAPABILITY_RANK[s.capability]
     case 'country':
       return normalize(s.country ?? '￿')
     case 'language':

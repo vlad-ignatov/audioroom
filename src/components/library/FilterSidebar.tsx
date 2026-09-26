@@ -1,18 +1,9 @@
 import { useState } from 'react'
-import type { Capability } from '@/types/station'
 import { useTable } from '@/store/table'
 import { useFacets, type Facet } from '@/hooks/useVisibleStations'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { cn } from '@/lib/utils'
-
-const CAPABILITY_OPTIONS: Array<{ value: Capability | 'any'; label: string }> = [
-  { value: 'any', label: 'Any quality' },
-  { value: 'full', label: 'Full (EQ works)' },
-  { value: 'playback-only', label: 'Playback only' },
-  { value: 'unavailable', label: 'Blocked' },
-  { value: 'unknown', label: 'Untested' },
-]
 
 function FacetGroup({
   title,
@@ -76,8 +67,7 @@ export function FilterSidebar() {
     filters.favoritesOnly ||
     filters.tags.length > 0 ||
     filters.countries.length > 0 ||
-    filters.codecs.length > 0 ||
-    filters.capability !== 'any'
+    filters.codecs.length > 0
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-line-soft bg-bg-raised p-3 scrollbar-thin">
@@ -110,19 +100,6 @@ export function FilterSidebar() {
           <Icon name="star" size={14} />
           Favourites only
         </button>
-
-        <select
-          value={filters.capability}
-          onChange={(e) => setFilters({ capability: e.target.value as Capability | 'any' })}
-          aria-label="Filter by audio quality"
-          className="h-8 rounded-md border border-line bg-bg px-2 text-[12px] text-ink-dim"
-        >
-          {CAPABILITY_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
       </div>
 
       {active && (

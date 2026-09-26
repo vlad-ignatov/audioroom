@@ -1,5 +1,5 @@
 import type { Capability } from '@/types/station'
-import { isDesktop } from '@/lib/desktop'
+import { isDesktop, isLocalFile } from '@/lib/desktop'
 
 export interface UrlPlan {
   /** The URL we should actually hand to the audio element. */
@@ -77,6 +77,14 @@ export async function probeStream(rawUrl: string, timeoutMs = 6000): Promise<Pro
   const plan = planUrl(rawUrl)
   if (plan.blockedReason) {
     return { capability: 'unavailable', url: plan.url, reason: plan.blockedReason }
+  }
+
+  // The main process serves local files itself, CORS-clean; a browser has no
+  // way to reach the disk at all.
+  if (isLocalFile(plan.url)) {
+    return isDesktop
+      ? { capability: 'full', url: plan.url }
+      : { capability: 'unavailable', url: plan.url, reason: 'Local files play only in the desktop app.' }
   }
 
   // Every response is made CORS-clean by the main process, so there is nothing

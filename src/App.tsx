@@ -14,6 +14,7 @@ import { SpacePanel } from '@/components/effects/SpacePanel'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useDesktopIntegration } from '@/hooks/useDesktopIntegration'
+import { addLocalFiles } from '@/lib/localFiles'
 
 /**
  * Controls that already act on a key themselves.
@@ -104,7 +105,8 @@ export default function App() {
   // Native menu items and hardware media keys.
   const openDirectory = useCallback(() => setDirectoryOpen(true), [])
   const addStation = useCallback(() => openEditor(null), [openEditor])
-  useDesktopIntegration({ onOpenDirectory: openDirectory, onAddStation: addStation })
+  const addFiles = useCallback(() => void addLocalFiles(notify), [notify])
+  useDesktopIntegration({ onOpenDirectory: openDirectory, onAddStation: addStation, onAddFiles: addFiles })
 
   // Global shortcuts, suppressed while a focused control owns the key.
   useEffect(() => {
@@ -174,7 +176,7 @@ export default function App() {
           {/* <span className="text-[11px] text-ink-faint">Online radio, equalised</span> */}
           <div className="ml-auto flex items-center gap-1">
             <Button size="sm" onClick={() => setAboutOpen(true)}>
-              Shortcuts &amp; quality
+              Shortcuts
             </Button>
           </div>
         </header>
@@ -198,7 +200,7 @@ export default function App() {
             window two open panels would otherwise take the whole height and leave
             the station list with none. Cap them and let them scroll. */}
         {eqOpen && (
-          <div className="flex max-h-[55%] shrink-0 flex-wrap overflow-y-auto bg-bg-raised scrollbar-thin">
+          <div className="flex max-h-[55%] shrink-0 flex-wrap overflow-y-auto bg-gradient-to-b from-panel to-bg scrollbar-thin">
             <EqualizerPanel />
             <SpacePanel />
           </div>
@@ -247,7 +249,7 @@ function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Shortcuts and audio quality"
+      title="Keyboard shortcuts"
       className="w-[min(92vw,560px)]"
     >
       <div className="flex flex-col gap-5 p-4">
@@ -265,27 +267,6 @@ function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
               </div>
             ))}
           </dl>
-        </section>
-
-        <section className="flex flex-col gap-2 text-[13px] leading-relaxed text-ink-dim">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
-            Why some stations have no equalizer
-          </h3>
-          <p>
-            Processing audio in the browser requires the station's server to allow it with a CORS
-            header. Most do, but not all. A station that refuses still plays — it just bypasses the
-            filter bank, the effects rack and the visualizer, and is marked{' '}
-            <span className="text-warn">Play only</span>.
-          </p>
-          <p>
-            Separately, a browser on an <code className="font-mono text-ink">https</code> page will
-            not open a plain <code className="font-mono text-ink">http</code> stream at all. Roughly
-            40% of the directory's most popular stations are http-only. This app automatically
-            retries those over https, which rescues many of them; the rest are marked{' '}
-            <span className="text-bad">Blocked</span>. Running the app locally over{' '}
-            <code className="font-mono text-ink">http://localhost</code> sidesteps the restriction
-            entirely.
-          </p>
         </section>
       </div>
     </Dialog>

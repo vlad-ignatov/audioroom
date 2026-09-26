@@ -76,10 +76,6 @@ export function toM3u(stations: Station[]): string {
   return lines.join('\n') + '\n'
 }
 
-export function toJson(stations: Station[]): string {
-  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), stations }, null, 2)
-}
-
 export function download(filename: string, content: string, type: string): void {
   const blob = new Blob([content], { type })
   const url = URL.createObjectURL(blob)

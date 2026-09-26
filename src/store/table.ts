@@ -1,11 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Capability } from '@/types/station'
-
 export type ColumnId =
   | 'favorite'
   | 'name'
-  | 'quality'
   | 'tags'
   | 'country'
   | 'language'
@@ -27,7 +24,6 @@ export interface ColumnDef {
 export const COLUMNS: Record<ColumnId, ColumnDef> = {
   favorite: { id: 'favorite', label: '', width: '32px', sortable: true },
   name: { id: 'name', label: 'Station', width: 'minmax(180px, 2.2fr)', sortable: true },
-  quality: { id: 'quality', label: 'Audio', width: '108px', sortable: true },
   tags: { id: 'tags', label: 'Tags', width: 'minmax(120px, 1.4fr)', sortable: false },
   country: { id: 'country', label: 'Country', width: 'minmax(110px, 1fr)', sortable: true },
   language: { id: 'language', label: 'Language', width: '110px', sortable: true },
@@ -41,7 +37,7 @@ export const COLUMNS: Record<ColumnId, ColumnDef> = {
 export const ALL_COLUMN_IDS = Object.keys(COLUMNS) as ColumnId[]
 
 const DEFAULT_VISIBLE: ColumnId[] = [
-  'favorite', 'name', 'quality', 'tags', 'country', 'bitrate', 'lastPlayedAt',
+  'favorite', 'name', 'tags', 'country', 'bitrate', 'lastPlayedAt',
 ]
 
 export type SortDir = 'asc' | 'desc'
@@ -56,7 +52,6 @@ export interface Filters {
   tags: string[]
   countries: string[]
   codecs: string[]
-  capability: Capability | 'any'
 }
 
 export const EMPTY_FILTERS: Filters = {
@@ -65,7 +60,6 @@ export const EMPTY_FILTERS: Filters = {
   tags: [],
   countries: [],
   codecs: [],
-  capability: 'any',
 }
 
 export interface SavedView {
@@ -186,6 +180,35 @@ export const useTable = create<TableState>()(
       deleteView: (id) =>
         set((st) => ({ savedViews: st.savedViews.filter((v) => v.id !== id) })),
     }),
-    { name: 'player.table', version: 1 },
+    {
+      name: 'player.table',
+      version: 2,
+      // v1 had an "Audio" column and a capability filter, from when the app
+      // ran in a browser and stations differed in what the server allowed.
+      // Strip them from anything saved, including views.
+      migrate: (persisted) => {
+        const old = (persisted ?? {}) as Record<string, unknown>
+        const clean = <T extends { id: string }>(items: unknown): T[] =>
+          Array.isArray(items) ? (items as T[]).filter((c) => c.id !== 'quality') : []
+        const cleanColumns = (cols: unknown): ColumnId[] =>
+          Array.isArray(cols) ? (cols as string[]).filter((c): c is ColumnId => c !== 'quality' && c in COLUMNS) : DEFAULT_VISIBLE
+        const cleanFilters = (f: unknown): Filters => {
+          const { capability: _dropped, ...rest } = (f ?? {}) as Filters & { capability?: unknown }
+          return { ...EMPTY_FILTERS, ...rest }
+        }
+        return {
+          ...old,
+          columns: cleanColumns(old.columns),
+          sort: clean<SortKey>(old.sort),
+          filters: cleanFilters(old.filters),
+          savedViews: (Array.isArray(old.savedViews) ? (old.savedViews as SavedView[]) : []).map((v) => ({
+            ...v,
+            columns: cleanColumns(v.columns),
+            sort: clean<SortKey>(v.sort),
+            filters: cleanFilters(v.filters),
+          })),
+        } as TableState
+      },
+    },
   ),
 )

@@ -45,6 +45,36 @@ contextBridge.exposeInMainWorld('desktop', {
   setNowPlaying(text) {
     ipcRenderer.send('now-playing', text)
   },
+
+  /**
+   * Open the native file picker and describe what the user chose.
+   *
+   * Resolves to an empty list on cancel. Each entry carries a `file://` URL
+   * plus whatever the file's tags offered.
+   */
+  pickAudioFiles() {
+    return ipcRenderer.invoke('pick-audio-files')
+  },
+
+  /** Which of these `file://` URLs name a file on this machine. */
+  filesExist(urls) {
+    return ipcRenderer.invoke('files-exist', urls)
+  },
+
+  /** Native folder picker; resolves to a `file://` URL ending in `/`, or null. */
+  pickFolder(title) {
+    return ipcRenderer.invoke('pick-folder', title)
+  },
+
+  /** The station library, kept in SQLite by the main process. */
+  library: {
+    load() {
+      return ipcRenderer.invoke('library:load')
+    },
+    write(ops) {
+      return ipcRenderer.invoke('library:write', ops)
+    },
+  },
 })
 
 // Let CSS target the desktop shell without React having to know about it —

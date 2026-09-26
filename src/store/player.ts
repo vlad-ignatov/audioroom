@@ -5,11 +5,14 @@ import { useLibrary } from './library'
 import { registerClick } from '@/api/radioBrowser'
 import { fetchNowPlaying, type NowPlaying, type NowPlayingSource } from '@/audio/nowPlaying'
 import { clamp } from '@/lib/utils'
+import { isLocalFile } from '@/lib/desktop'
 
 interface PlayerState {
   status: EngineStatus
   pipeline: Pipeline
   capability: Capability
+  /** True while a local file is loaded: it has a position and can be seeked. */
+  seekable: boolean
   /** Measured loudness of the current stream, and the correction applied. */
   loudnessLufs: number | null
   levelGainDb: number
@@ -42,6 +45,8 @@ interface PlayerState {
   step: (delta: number) => Promise<void>
   setVolume: (v: number) => void
   toggleMute: () => void
+  /** Jump to a position in the current local file. No effect on a stream. */
+  seek: (seconds: number) => void
 }
 
 const VOLUME_KEY = 'player.volume'
@@ -92,6 +97,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     status: 'idle',
     pipeline: null,
     capability: 'unknown',
+    seekable: false,
     loudnessLufs: null,
     levelGainDb: 0,
     currentId: null,
@@ -126,13 +132,19 @@ export const usePlayer = create<PlayerState>()((set, get) => {
         knownUrl: cacheFresh ? (station.resolvedUrl ?? station.url) : undefined,
         knownLufs: station.loudnessLufs,
       })
-      useLibrary
-        .getState()
-        .recordCapability(station.id, outcome.capability, outcome.url, outcome.reason)
+      // A stream's verdict is worth remembering for a day; a file's is not. It
+      // was known to be playable when it was added, and a failure now is more
+      // likely an unmounted drive than a file that has stopped being audio.
+      if (!isLocalFile(station.url)) {
+        useLibrary
+          .getState()
+          .recordCapability(station.id, outcome.capability, outcome.url, outcome.reason)
+      }
       updateMediaSession(station)
       // Track metadata rides on its own connection, so it works even for
-      // stations that are barred from the Web Audio graph.
-      startNowPlaying({ ...station, resolvedUrl: outcome.url })
+      // stations that are barred from the Web Audio graph. A local file has
+      // no such thing; its tags were read when it was added.
+      if (!isLocalFile(station.url)) startNowPlaying({ ...station, resolvedUrl: outcome.url })
     },
 
     toggle: async (station) => {
@@ -142,6 +154,9 @@ export const usePlayer = create<PlayerState>()((set, get) => {
         get().pause()
         return
       }
+      // A paused file continues from where it stopped; a paused stream has
+      // been disconnected and is played afresh, which resume() declines.
+      if (currentId === station.id && status === 'paused' && (await engine.resume())) return
       await get().play(station)
     },
 
@@ -198,7 +213,24 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       engine.setMuted(muted)
       set({ muted })
     },
+
+    seek: (seconds) => engine.seek(seconds),
   }
+})
+
+/**
+ * When a local file plays through, move on to the next row.
+ *
+ * Follows the queue in display order, as next/previous do, and stops at the
+ * end of it rather than wrapping: a list that loops forever is a surprise, a
+ * list that finishes is what every music player does.
+ */
+engine.setEndedListener(() => {
+  const { queue, currentId } = usePlayer.getState()
+  const idx = currentId ? queue.indexOf(currentId) : -1
+  const nextId = idx >= 0 ? queue[idx + 1] : undefined
+  const station = nextId ? useLibrary.getState().stations.find((s) => s.id === nextId) : undefined
+  if (station) void usePlayer.getState().play(station)
 })
 
 /** How often to re-read the track while a station is playing. */
@@ -236,6 +268,12 @@ function startNowPlaying(station: Station): void {
     if (usePlayer.getState().currentId !== station.id) return
 
     if (hit) {
+      // No re-levelling on a track change, deliberately. It was tried: a few
+      // seconds of one song measure several dB apart depending on whether
+      // they catch a verse or a chorus, the title changes up to a poll late
+      // and rarely in step with the audio, and the result was the volume
+      // lurching mid-song. Stations already level their own programme; the
+      // gap worth closing is between stations, measured once at the start.
       everHit = true
       preferred = hit.source
       sourceCache.set(station.id, hit.source)
@@ -277,6 +315,7 @@ engine.subscribe((s) => {
     status: s.status,
     pipeline: s.pipeline,
     capability: s.capability,
+    seekable: s.seekable,
     loudnessLufs: s.loudnessLufs,
     levelGainDb: s.levelGainDb,
     message: s.message,
@@ -284,28 +323,49 @@ engine.subscribe((s) => {
   })
   if (s.status === 'idle') stopNowPlaying()
   if ('mediaSession' in navigator) {
+    // Connecting and buffering count as playing: that is the listener's
+    // intent, and it makes the system's play/pause toggle send "pause".
     navigator.mediaSession.playbackState =
-      s.status === 'playing' ? 'playing' : s.status === 'idle' ? 'none' : 'paused'
+      s.status === 'idle' ? 'none' : isLive(s.status) ? 'playing' : 'paused'
   }
 })
 
 function updateMediaSession(station: Station, track?: NowPlaying): void {
   if (!('mediaSession' in navigator)) return
+  const local = isLocalFile(station.url)
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track?.title ?? station.name,
-    artist: track?.artist ?? (track ? station.name : station.country ?? 'Online radio'),
-    album: station.name,
+    artist: track?.artist ?? (track ? station.name : station.country ?? (local ? 'Local file' : 'Online radio')),
+    album: local ? (station.album ?? '') : station.name,
     artwork: station.favicon ? [{ src: station.favicon, sizes: '256x256' }] : [],
   })
 }
 
+function isLive(status: PlayerState['status']): boolean {
+  return status === 'playing' || status === 'buffering' || status === 'connecting'
+}
+
+/**
+ * The system's transport: Control Center, keyboard media keys, and headphone
+ * controls and wear sensors all arrive here on macOS, routed to whichever app
+ * the OS considers Now Playing.
+ *
+ * "pause" must really pause: stopping releases the player, the OS then hands
+ * Now Playing to another app, and the next "play" (putting the headphones
+ * back on) starts that app instead. "play" and "pause" are also idempotent,
+ * unlike the in-app toggle, since the OS may send either in any state.
+ */
 if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler('play', () => {
-    const { currentId } = usePlayer.getState()
-    const station = useLibrary.getState().stations.find((s) => s.id === currentId)
-    if (station) void usePlayer.getState().play(station)
+    const player = usePlayer.getState()
+    // togglePlayback() rather than play(): a paused file should continue, not
+    // restart, and after a stop there is only the selection to go on.
+    if (!isLive(player.status)) void player.togglePlayback()
   })
-  navigator.mediaSession.setActionHandler('pause', () => usePlayer.getState().stop())
+  navigator.mediaSession.setActionHandler('pause', () => {
+    const player = usePlayer.getState()
+    if (isLive(player.status)) player.pause()
+  })
   navigator.mediaSession.setActionHandler('stop', () => usePlayer.getState().stop())
   navigator.mediaSession.setActionHandler('nexttrack', () => void usePlayer.getState().step(1))
   navigator.mediaSession.setActionHandler('previoustrack', () => void usePlayer.getState().step(-1))
