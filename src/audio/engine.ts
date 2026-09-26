@@ -1,5 +1,5 @@
 import type Hls from 'hls.js'
-import { BAND_Q, BAND_COUNT, EQ_FREQUENCIES, dbToGain, eqPeakGainDb, filterTypeForBand } from './eq'
+import { BAND_Q, BAND_COUNT, EQ_FREQUENCIES, dbToGain, eqHeadroomDb, filterTypeForBand } from './eq'
 import { probeStream } from './probe'
 import { DEFAULT_REVERB, renderImpulseResponse, type ImpulseOptions } from './fx'
 import {
@@ -1175,12 +1175,13 @@ export class AudioEngine {
    * The gain applied ahead of the filter bank, in dB.
    *
    * A boost can only be clean if there is room above the signal for it:
-   * material mastered to 0 dBFS plus +8 dB of bass is 8 dB over, and the
-   * limiter would have to duck the whole mix to hold it. So the largest boost
-   * the current curve applies is cancelled automatically, and the curve then
-   * shapes the tone without raising peaks, at the cost of some loudness,
-   * which the volume control gives back. It depends only on the curve, never
-   * on the music, so it cannot pump.
+   * material mastered to 0 dBFS plus +8 dB of bass is well over, and the
+   * limiter would have to duck the whole mix to hold it. So the curve's
+   * boost is cancelled automatically, weighted by where music has energy (see
+   * eqHeadroomDb): a bass boost gets its full height back, while a treble
+   * boost costs almost nothing, so it is heard as more treble rather than as
+   * everything else getting quieter. It depends only on the curve, never on the music,
+   * so it cannot pump.
    *
    * The user's preamp is an offset from that clip-safe level, not an
    * alternative to it: every position of the slider is heard, and pushing it
@@ -1191,7 +1192,7 @@ export class AudioEngine {
   private preGainDb(): number {
     if (!this.eqEnabled) return 0
     const rate = this.ctx?.sampleRate ?? 48000
-    return this.preampDb - eqPeakGainDb(this.gains, rate)
+    return this.preampDb - eqHeadroomDb(this.gains, rate)
   }
 
   private updatePreGain(): void {

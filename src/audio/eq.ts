@@ -93,18 +93,38 @@ function bandResponseDb(type: BiquadFilterType, f0: number, gainDb: number, hz: 
 }
 
 /**
- * The largest boost the whole filter bank applies anywhere in 20 Hz–20 kHz,
- * in dB (0 or more). Adjacent boosted bands overlap, so this can exceed the
- * highest single slider — two neighbours at +6 peak near +8 between them.
+ * Rough long-term spectrum of mixed music, as power per octave in dB: flat
+ * through the bass and low mids, falling about 5 dB per octave above 500 Hz
+ * and 6 dB per octave below 50 Hz. Most of a track's energy, and so its
+ * peaks, lives low; 16 kHz carries around 25 dB less than 250 Hz.
  */
-export function eqPeakGainDb(gains: readonly number[], sampleRate: number): number {
+function musicSpectrumDb(hz: number): number {
+  if (hz < 50) return -6 * Math.log2(50 / hz)
+  if (hz > 500) return -5 * Math.log2(hz / 500)
+  return 0
+}
+
+/**
+ * The headroom the filter bank needs, in dB (0 or more): the largest boost it
+ * applies anywhere in 20 Hz–20 kHz, with each frequency's boost discounted by
+ * how far typical music there sits below its loudest region.
+ *
+ * A boost only threatens clipping where there is energy for it to raise.
+ * +12 dB at 16 kHz is a +12 dB peak in the response, but music there is some
+ * 25 dB down, so it barely moves the waveform's peaks; cancelling it in full
+ * would drop everything else by 12 dB. The same boost in the bass, where the
+ * energy is, still gets its full height back. Adjacent boosted bands overlap,
+ * so this can exceed the highest single slider — two neighbours at +6 in the
+ * bass peak near +8 between them.
+ */
+export function eqHeadroomDb(gains: readonly number[], sampleRate: number): number {
   if (!gains.some((g) => g > 0)) return 0
   let peak = 0
   const steps = 240
   for (let i = 0; i <= steps; i++) {
     const hz = 20 * Math.pow(1000, i / steps)
     if (hz >= sampleRate / 2) break
-    let total = 0
+    let total = musicSpectrumDb(hz)
     for (let b = 0; b < BAND_COUNT; b++) {
       total += bandResponseDb(filterTypeForBand(b), EQ_FREQUENCIES[b]!, gains[b] ?? 0, hz, sampleRate)
     }
