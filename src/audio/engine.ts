@@ -11,7 +11,7 @@ import {
   measureStreamLoudness,
 } from './loudness'
 import type { Capability } from '@/types/station'
-import { isDesktop, isLocalFile, playableUrl } from '@/lib/desktop'
+import { desktop, isDesktop, isLocalFile, playableUrl } from '@/lib/desktop'
 
 export type EngineStatus =
   | 'idle'
@@ -694,6 +694,9 @@ export class AudioEngine {
     }
     this.active = el
     el.dataset.token = String(this.streamToken)
+    // The URL as requested (file:// for a local file), not the media:// one the
+    // element loads; re-measuring a file needs it.
+    el.dataset.url = url
     this.applyVolume()
     this.patch({ pipeline: useGraph ? 'graph' : 'plain' })
 
@@ -800,9 +803,24 @@ export class AudioEngine {
     this.setLevelGainNow(0)
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), PREROLL_TIMEOUT_MS)
-    return measureStreamLoudness(playableUrl(url), { signal: controller.signal }).finally(() =>
-      clearTimeout(timer),
-    )
+    const opening = () => measureStreamLoudness(playableUrl(url), { signal: controller.signal })
+    // A song's opening says little about the song — intros are quiet — so a
+    // local file is measured whole. The stream method stays as the fallback
+    // for when the whole-track measurement is unavailable.
+    const measured = isLocalFile(url)
+      ? this.measureWholeFile(url, controller.signal).then((lufs) => lufs ?? opening())
+      : opening()
+    return measured.finally(() => clearTimeout(timer))
+  }
+
+  /** Whole-track loudness from the main process; null if it cannot say in time. */
+  private measureWholeFile(url: string, signal: AbortSignal): Promise<number | null> {
+    const bridge = desktop
+    if (!bridge) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      signal.addEventListener('abort', () => resolve(null), { once: true })
+      bridge.measureLoudness(url).then(resolve, () => resolve(null))
+    })
   }
 
   /**
@@ -910,6 +928,21 @@ export class AudioEngine {
    */
   private remeasure(): void {
     if (this.state.status !== 'playing' || this.state.pipeline !== 'graph') return
+    const url = this.active?.dataset.url
+    if (this.isFile && url) {
+      // A file can still be measured whole; only fall back to listening.
+      const gen = this.generation
+      void this.measureWholeFile(url, new AbortController().signal).then((lufs) => {
+        if (gen !== this.generation) return
+        if (lufs === null) return this.measureLive(gen)
+        this.measuredLufs = lufs
+        const db = correctionDb(lufs, this.levelingTarget)
+        this.applyLevelGain(db)
+        this.patch({ loudnessLufs: lufs })
+        this.onLoudness?.(lufs, db)
+      })
+      return
+    }
     this.measureLive(this.generation)
   }
 
@@ -1099,6 +1132,7 @@ export class AudioEngine {
     this.streamToken++
     for (const el of [this.graphEl, this.plainEl]) {
       delete el.dataset.token
+      delete el.dataset.url
       el.pause()
       el.removeAttribute('src')
       el.load()

@@ -4,8 +4,6 @@ import { ALL_COLUMN_IDS, COLUMNS, useTable } from '@/store/table'
 import { useLibrary } from '@/store/library'
 import { parsePlaylist, toM3u, download } from '@/lib/playlist'
 import { createBackup, parseBackup, type Backup } from '@/lib/backup'
-import { addLocalFiles } from '@/lib/localFiles'
-import { desktop } from '@/lib/desktop'
 import { Button } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { ImportDialog } from './ImportDialog'
@@ -60,7 +58,7 @@ export function Toolbar({
   }
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-soft px-3">
+    <div className="flex shrink-0 items-center gap-2 px-3 bg-bg-raised py-2">
       <Button variant="accent" size="sm" onClick={onBrowseDirectory}>
         <Icon name="globe" size={13} />
         Browse directory
@@ -69,13 +67,6 @@ export function Toolbar({
         <Icon name="plus" size={13} />
         Add station
       </Button>
-      {/* Only the desktop shell can open files from disk. */}
-      {desktop && (
-        <Button variant="solid" size="sm" onClick={() => void addLocalFiles(onNotify)}>
-          <Icon name="folder" size={13} />
-          Add files
-        </Button>
-      )}
 
       <div className="ml-auto flex items-center gap-1">
         <DropdownMenu.Root>

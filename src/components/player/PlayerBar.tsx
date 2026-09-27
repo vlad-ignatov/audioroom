@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import * as Slider from '@radix-ui/react-slider'
 import { useLibrary } from '@/store/library'
+import { findLocalTrack, useLocalLibrary } from '@/store/localLibrary'
 import { usePlayer } from '@/store/player'
 import { Icon } from '@/components/ui/Icon'
 import { IconButton } from '@/components/ui/Button'
@@ -59,12 +60,16 @@ export function PlayerBar({
     usePlayer()
   // The selection, not the engine's station: the bar keeps showing what you
   // are on while it is paused or stopped.
-  const station = useLibrary((s) => s.stations.find((x) => x.id === selectedId))
+  const libraryStation = useLibrary((s) => s.stations.find((x) => x.id === selectedId))
+  const localTrack = useLocalLibrary((s) => (selectedId ? findLocalTrack(selectedId, s) : undefined))
+  const station = libraryStation ?? localTrack
   const isLive = status === 'playing' || status === 'buffering' || status === 'connecting'
 
   return (
     <div className="relative flex h-16 shrink-0 items-center gap-4 border-t border-line-soft bg-bg px-4">
-      {seekable && <SeekBar />}
+      {/* Keyed by track: a new track starts with a fresh bar, never with a
+          half-finished drag from the last one. */}
+      {seekable && <SeekBar key={selectedId ?? ''} />}
       <div className="flex shrink-0 items-center gap-1">
         <IconButton label="Previous station" size="md" onClick={() => void step(-1)}>
           <Icon name="prev" size={18} />

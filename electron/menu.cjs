@@ -43,6 +43,11 @@ function buildMenu(send) {
           click: () => send('add-files'),
         },
         {
+          label: 'Add Folder…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => send('add-folder'),
+        },
+        {
           label: 'Browse Directory…',
           accelerator: 'CmdOrCtrl+F',
           click: () => send('open-directory'),
@@ -92,6 +97,9 @@ function buildMenu(send) {
     {
       label: 'View',
       submenu: [
+        { label: 'Internet Radio', accelerator: 'CmdOrCtrl+1', click: () => send('view-radio') },
+        { label: 'Local Library', accelerator: 'CmdOrCtrl+2', click: () => send('view-local') },
+        { type: 'separator' },
         { label: 'Equalizer', accelerator: 'CmdOrCtrl+E', click: () => send('toggle-equalizer') },
         { type: 'separator' },
         { role: 'resetZoom' },
@@ -111,6 +119,12 @@ function buildMenu(send) {
     {
       role: 'help',
       submenu: [
+        {
+          label: 'Keyboard Shortcuts',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => send('show-shortcuts'),
+        },
+        { type: 'separator' },
         {
           label: 'radio-browser.info',
           click: () => void shell.openExternal('https://www.radio-browser.info/'),

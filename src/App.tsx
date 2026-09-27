@@ -12,9 +12,11 @@ import { PlayerBar } from '@/components/player/PlayerBar'
 import { EqualizerPanel } from '@/components/equalizer/EqualizerPanel'
 import { SpacePanel } from '@/components/effects/SpacePanel'
 import { Dialog } from '@/components/ui/Dialog'
-import { Button } from '@/components/ui/Button'
+import { LocalToolbar } from '@/components/local/LocalToolbar'
+import { LocalTree } from '@/components/local/LocalTree'
+import { useLocalLibrary } from '@/store/localLibrary'
 import { useDesktopIntegration } from '@/hooks/useDesktopIntegration'
-import { addLocalFiles } from '@/lib/localFiles'
+import { cn } from '@/lib/utils'
 
 /**
  * Controls that already act on a key themselves.
@@ -88,6 +90,23 @@ function useToast() {
   return { message, notify }
 }
 
+type View = 'radio' | 'local'
+
+const VIEW_KEY = 'app.view'
+
+function loadView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'local' ? 'local' : 'radio'
+  } catch {
+    return 'radio'
+  }
+}
+
+const TABS: Array<{ id: View; label: string }> = [
+  { id: 'radio', label: 'Internet radio' },
+  { id: 'local', label: 'Local library' },
+]
+
 export default function App() {
   const eqOpen = useEq((s) => s.panelOpen)
   const setEqOpen = useEq((s) => s.setPanelOpen)
@@ -96,6 +115,20 @@ export default function App() {
   const [editing, setEditing] = useState<Station | null>(null)
   const [stationDialogOpen, setStationDialogOpen] = useState(false)
   const { message, notify } = useToast()
+  const [view, setViewState] = useState<View>(loadView)
+
+  const setView = useCallback((next: View) => {
+    setViewState(next)
+    try {
+      localStorage.setItem(VIEW_KEY, next)
+    } catch {
+      // The last tab is a convenience.
+    }
+  }, [])
+
+  useEffect(() => {
+    void useLocalLibrary.getState().loadRoots()
+  }, [])
 
   const openEditor = useCallback((s: Station | null) => {
     setEditing(s)
@@ -105,8 +138,24 @@ export default function App() {
   // Native menu items and hardware media keys.
   const openDirectory = useCallback(() => setDirectoryOpen(true), [])
   const addStation = useCallback(() => openEditor(null), [openEditor])
-  const addFiles = useCallback(() => void addLocalFiles(notify), [notify])
-  useDesktopIntegration({ onOpenDirectory: openDirectory, onAddStation: addStation, onAddFiles: addFiles })
+  // Files belong to the local library now; the radio library holds stations.
+  const addFiles = useCallback(() => {
+    setView('local')
+    void useLocalLibrary.getState().addFiles().then((message) => message && notify(message))
+  }, [setView, notify])
+  const addFolder = useCallback(() => {
+    setView('local')
+    void useLocalLibrary.getState().addFolder().then((message) => message && notify(message))
+  }, [setView, notify])
+  const showShortcuts = useCallback(() => setAboutOpen(true), [])
+  useDesktopIntegration({
+    onOpenDirectory: openDirectory,
+    onAddStation: addStation,
+    onAddFiles: addFiles,
+    onAddFolder: addFolder,
+    onShowShortcuts: showShortcuts,
+    onShowView: setView,
+  })
 
   // Global shortcuts, suppressed while a focused control owns the key.
   useEffect(() => {
@@ -168,32 +217,50 @@ export default function App() {
   return (
     <Tooltip.Provider delayDuration={350}>
       <div className="flex h-full flex-col bg-bg">
-        <header className="app-titlebar flex h-9 shrink-0 items-center gap-2 border-b border-line-soft px-4">
-          {/* <span className="flex h-6 w-6 items-center justify-center rounded bg-accent text-bg"> */}
-            {/* <Icon name="volume" size={13} /> */}
-          {/* </span> */}
-          {/* <h1 className="text-[13px] font-medium tracking-tight text-ink">Player</h1> */}
-          {/* <span className="text-[11px] text-ink-faint">Online radio, equalised</span> */}
-          <div className="ml-auto flex items-center gap-1">
-            <Button size="sm" onClick={() => setAboutOpen(true)}>
-              Shortcuts
-            </Button>
+        <header className="app-titlebar flex h-9 shrink-0 items-end gap-1 border-b border-line px-3">
+          <div role="tablist" aria-label="Library" className="flex h-full items-end gap-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={view === tab.id}
+                onClick={() => setView(tab.id)}
+                className={cn(
+                  '-mb-px h-7 rounded-t-md border border-b-0 px-3 text-[12px] transition-colors font-semibold',
+                  view === tab.id
+                    ? 'border-line bg-bg-raised text-ink'
+                    : 'border-transparent text-ink-faint hover:text-ink-dim',
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <FilterSidebar />
-          <main className="flex min-w-0 flex-1 flex-col">
-            <Toolbar
-              onAddStation={() => openEditor(null)}
-              onBrowseDirectory={() => setDirectoryOpen(true)}
-              onNotify={notify}
-            />
-            <StationTable
-              onEditStation={openEditor}
-              onBrowseDirectory={() => setDirectoryOpen(true)}
-            />
-          </main>
+          {view === 'radio' ? (
+            <>
+              <FilterSidebar />
+              <main className="flex min-w-0 flex-1 flex-col">
+                <Toolbar
+                  onAddStation={() => openEditor(null)}
+                  onBrowseDirectory={() => setDirectoryOpen(true)}
+                  onNotify={notify}
+                />
+                <StationTable
+                  onEditStation={openEditor}
+                  onBrowseDirectory={() => setDirectoryOpen(true)}
+                />
+              </main>
+            </>
+          ) : (
+            <main className="flex min-w-0 flex-1 flex-col">
+              <LocalToolbar onNotify={notify} />
+              <LocalTree onNotify={notify} />
+            </main>
+          )}
         </div>
 
         {/* The panels are shrink-0 so their controls never squash, but in a short
@@ -242,6 +309,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ['B', 'Browse the station directory'],
   ['0', 'Reset the equalizer to flat'],
   ['/', 'Focus the filter box'],
+  ['Ctrl 1 / 2', 'Internet radio / local library'],
+  ['Ctrl /', 'Show this list'],
 ]
 
 function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {

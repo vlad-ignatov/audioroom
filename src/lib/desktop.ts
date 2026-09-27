@@ -21,18 +21,84 @@ export type MenuCommand =
   | 'open-directory'
   | 'add-station'
   | 'add-files'
+  | 'add-folder'
+  | 'show-shortcuts'
+  | 'view-radio'
+  | 'view-local'
 
-/** A file the user picked, described by the main process from its tags. */
-export interface LocalFileEntry {
-  /** `file://` URL; the library stores this, the engine plays it via `media://`. */
-  url: string
+/** A subfolder in a directory listing. */
+export interface DirFolder {
   name: string
+  path: string
+}
+
+/** An audio file in a directory listing. */
+export interface DirFile {
+  name: string
+  path: string
+  /** `file://` URL; doubles as the track's id in the player. */
+  url: string
+}
+
+export interface DirListing {
+  folders: DirFolder[]
+  files: DirFile[]
+  /** `file://` URL of the folder's album art, when it has any. */
+  cover?: string
+}
+
+/** What a file's tags offered; every field is best-effort. */
+export interface TrackTags {
+  title?: string
+  artist?: string
   album?: string
+  /** seconds */
+  duration?: number
   codec?: string
   /** kbps */
   bitrate?: number
-  /** seconds */
-  duration?: number
+}
+
+/** Tag changes for one file: undefined leaves a field alone, '' removes it. */
+export interface TagEdit {
+  title?: string
+  artist?: string
+  album?: string
+}
+
+/** A file's text tags as found by a folder scan. */
+export interface ScannedTags {
+  path: string
+  title?: string
+  artist?: string
+  album?: string
+}
+
+/** What adding a root folder did; roots never overlap. */
+export interface FolderAddResult {
+  folders: string[]
+  /** `exists`: already a root. `inside`: covered by `root`. */
+  status: 'added' | 'exists' | 'inside'
+  root: string
+  /** Former roots inside the added folder, now shown under it. */
+  replaced?: string[]
+  /** How many single files the folder took in. */
+  absorbed?: number
+}
+
+/** A single file in the local library, described like a listing entry. */
+export interface LooseFileEntry extends DirFile {
+  /** `file://` URL of the cover in the file's folder, if any. */
+  cover?: string
+}
+
+export interface LooseFilesAddResult {
+  files: string[]
+  added: number
+  /** Already added on their own. */
+  present: number
+  /** Inside a root folder already. */
+  covered: number
 }
 
 /** One atomic batch of library changes; see electron/library-db.cjs. */
@@ -54,9 +120,30 @@ export interface DesktopBridge {
   onMediaKey(fn: (action: MediaKeyAction) => void): () => void
   onMenuCommand(fn: (command: MenuCommand) => void): () => void
   setNowPlaying(text: string): void
-  pickAudioFiles(): Promise<LocalFileEntry[]>
   filesExist(urls: string[]): Promise<boolean[]>
   pickFolder(title: string): Promise<string | null>
+  pickDirectory(title: string): Promise<string | null>
+  listDir(path: string): Promise<DirListing>
+  measureLoudness(fileUrl: string): Promise<number | null>
+  readTags(paths: string[]): Promise<TrackTags[]>
+  writeTags(path: string, fields: TagEdit): Promise<void>
+  scanTags(
+    path: string,
+    onProgress?: (p: { done: number; total: number }) => void,
+    recursive?: boolean,
+  ): Promise<ScannedTags[]>
+  pickAudioPaths(): Promise<string[]>
+  fileEntries(paths: string[]): Promise<LooseFileEntry[]>
+  looseFiles: {
+    list(): Promise<string[]>
+    add(paths: string[]): Promise<LooseFilesAddResult>
+    remove(path: string): Promise<string[]>
+  }
+  folders: {
+    list(): Promise<string[]>
+    add(path: string): Promise<FolderAddResult>
+    remove(path: string): Promise<string[]>
+  }
   library: {
     /**
      * `initialized` is false until the first write ever made; `nextPosition`

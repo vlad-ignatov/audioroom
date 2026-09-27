@@ -62,9 +62,12 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
   }, [columns])
 
   // Next/previous should follow whatever the user is looking at, not the
-  // library's storage order.
+  // library's storage order — but only while playback belongs to this list.
+  // A track picked in the local library keeps its own queue.
   useEffect(() => {
-    setQueue(rows.map((r) => r.id))
+    const ids = rows.map((r) => r.id)
+    const { selectedId } = usePlayer.getState()
+    if (!selectedId || ids.includes(selectedId)) setQueue(ids)
   }, [rows, setQueue])
 
   const virtualizer = useVirtualizer({
@@ -183,7 +186,10 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
                     isSelected={selectedId === station.id}
                     isPlaying={status === 'playing' || status === 'buffering'}
                     draggable={canDrag}
-                    onPlay={() => void toggle(station)}
+                    onPlay={() => {
+                      setQueue(rows.map((r) => r.id))
+                      void toggle(station)
+                    }}
                     onToggleFavorite={() => toggleFavorite(station.id)}
                     onEdit={() => onEditStation(station)}
                     onRemove={() => removeStation(station.id)}

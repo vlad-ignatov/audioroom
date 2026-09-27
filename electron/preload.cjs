@@ -46,16 +46,6 @@ contextBridge.exposeInMainWorld('desktop', {
     ipcRenderer.send('now-playing', text)
   },
 
-  /**
-   * Open the native file picker and describe what the user chose.
-   *
-   * Resolves to an empty list on cancel. Each entry carries a `file://` URL
-   * plus whatever the file's tags offered.
-   */
-  pickAudioFiles() {
-    return ipcRenderer.invoke('pick-audio-files')
-  },
-
   /** Which of these `file://` URLs name a file on this machine. */
   filesExist(urls) {
     return ipcRenderer.invoke('files-exist', urls)
@@ -64,6 +54,78 @@ contextBridge.exposeInMainWorld('desktop', {
   /** Native folder picker; resolves to a `file://` URL ending in `/`, or null. */
   pickFolder(title) {
     return ipcRenderer.invoke('pick-folder', title)
+  },
+
+  /** Native folder picker for the local library; resolves to a path, or null. */
+  pickDirectory(title) {
+    return ipcRenderer.invoke('pick-directory', title)
+  },
+
+  /** Whole-track loudness of a `file://` URL in LUFS, or null. */
+  measureLoudness(fileUrl) {
+    return ipcRenderer.invoke('measure-loudness', fileUrl)
+  },
+
+  /** One level of a directory: subfolders and audio files. */
+  listDir(dirPath) {
+    return ipcRenderer.invoke('list-dir', dirPath)
+  },
+
+  /** Display tags for a batch of files, in the same order. */
+  readTags(paths) {
+    return ipcRenderer.invoke('read-tags', paths)
+  },
+
+  /** Rewrite some of an MP3's tags; undefined fields stay, empty strings remove. */
+  writeTags(filePath, fields) {
+    return ipcRenderer.invoke('write-tags', filePath, fields)
+  },
+
+  /** Text tags of every MP3 in a folder (and below, unless `recursive` is false). */
+  async scanTags(dirPath, onProgress, recursive = true) {
+    const handler = (_e, progress) => onProgress?.(progress)
+    ipcRenderer.on('tag-scan-progress', handler)
+    try {
+      return await ipcRenderer.invoke('scan-tags', dirPath, recursive)
+    } finally {
+      ipcRenderer.removeListener('tag-scan-progress', handler)
+    }
+  },
+
+  /** Native multi-file picker for the local library; resolves to paths. */
+  pickAudioPaths() {
+    return ipcRenderer.invoke('pick-audio-paths')
+  },
+
+  /** Listing-style entries for single files, with their folder's cover. */
+  fileEntries(filePaths) {
+    return ipcRenderer.invoke('file-entries', filePaths)
+  },
+
+  /** Single files in the local library, beside the root folders. */
+  looseFiles: {
+    list() {
+      return ipcRenderer.invoke('loose-files:list')
+    },
+    add(filePaths) {
+      return ipcRenderer.invoke('loose-files:add', filePaths)
+    },
+    remove(filePath) {
+      return ipcRenderer.invoke('loose-files:remove', filePath)
+    },
+  },
+
+  /** The local library's root folders, kept in SQLite. */
+  folders: {
+    list() {
+      return ipcRenderer.invoke('folders:list')
+    },
+    add(folderPath) {
+      return ipcRenderer.invoke('folders:add', folderPath)
+    },
+    remove(folderPath) {
+      return ipcRenderer.invoke('folders:remove', folderPath)
+    },
   },
 
   /** The station library, kept in SQLite by the main process. */

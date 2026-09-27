@@ -6,6 +6,7 @@ import { registerClick } from '@/api/radioBrowser'
 import { fetchNowPlaying, type NowPlaying, type NowPlayingSource } from '@/audio/nowPlaying'
 import { clamp } from '@/lib/utils'
 import { isLocalFile } from '@/lib/desktop'
+import { findPlayable } from '@/lib/playable'
 
 interface PlayerState {
   status: EngineStatus
@@ -31,7 +32,10 @@ interface PlayerState {
   nowPlaying: NowPlaying | null
   volume: number
   muted: boolean
-  /** Ordered station ids as currently displayed, so next/prev follow the user's sort. */
+  /**
+   * Ordered ids of the list playback started from, as currently displayed, so
+   * next/prev follow the user's sort and stay in that list across tab switches.
+   */
   queue: string[]
 
   setQueue: (ids: string[]) => void
@@ -115,6 +119,10 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     },
 
     play: async (station) => {
+      // Whatever was playing, its track info is stale now. A new stream starts
+      // its own poll below, but a local file has none, and without this the
+      // last station's "artist — title" stayed on screen over the file.
+      stopNowPlaying()
       get().select(station.id)
       const lib = useLibrary.getState()
       lib.markPlayed(station.id)
@@ -169,10 +177,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
      */
     togglePlayback: async () => {
       const { selectedId, queue } = get()
-      const stations = useLibrary.getState().stations
-      const station =
-        stations.find((s) => s.id === selectedId) ??
-        stations.find((s) => s.id === queue[0])
+      const station = findPlayable(selectedId) ?? findPlayable(queue[0])
       if (!station) return
       await get().toggle(station)
     },
@@ -197,7 +202,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
       const idx = selectedId ? queue.indexOf(selectedId) : -1
       const nextIdx = idx < 0 ? 0 : (idx + delta + queue.length) % queue.length
       const nextId = queue[nextIdx]
-      const station = useLibrary.getState().stations.find((s) => s.id === nextId)
+      const station = findPlayable(nextId)
       if (station) await get().play(station)
     },
 
@@ -229,7 +234,7 @@ engine.setEndedListener(() => {
   const { queue, currentId } = usePlayer.getState()
   const idx = currentId ? queue.indexOf(currentId) : -1
   const nextId = idx >= 0 ? queue[idx + 1] : undefined
-  const station = nextId ? useLibrary.getState().stations.find((s) => s.id === nextId) : undefined
+  const station = findPlayable(nextId)
   if (station) void usePlayer.getState().play(station)
 })
 

@@ -12,6 +12,7 @@ const windowState = require('./window-state.cjs')
 const { buildMenu } = require('./menu.cjs')
 const localFiles = require('./local-files.cjs')
 const libraryDb = require('./library-db.cjs')
+const tagWriter = require('./tag-writer.cjs')
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173'
 const isDev = !app.isPackaged
@@ -85,6 +86,10 @@ function createWindow() {
     minWidth: 900,
     minHeight: 560,
     backgroundColor: '#0b0b0c',
+    // macOS and Windows take the icon from the bundle; Linux needs it on the window.
+    ...(process.platform === 'linux' && {
+      icon: path.join(__dirname, '..', 'build', 'icons', '512x512.png'),
+    }),
     // Inset traffic lights on macOS; the renderer pads its header to match.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     // Don't flash an empty frame while the bundle boots.
@@ -157,6 +162,7 @@ if (!app.requestSingleInstanceLock()) {
     installCorsBypass(session.defaultSession)
     localFiles.install(() => mainWindow)
     libraryDb.install()
+    tagWriter.install()
     buildMenu(send)
     createWindow()
 

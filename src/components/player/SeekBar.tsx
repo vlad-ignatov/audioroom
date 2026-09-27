@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Slider from '@radix-ui/react-slider'
 import { engine, type Timing } from '@/audio/engine'
 import { usePlayer } from '@/store/player'
@@ -29,6 +29,25 @@ export function SeekBar() {
   const seek = usePlayer((s) => s.seek)
   const { position, duration } = useTiming()
   const [dragging, setDragging] = useState<number | null>(null)
+  const draggingRef = useRef<number | null>(null)
+
+  /**
+   * Seek to where the thumb was let go, and go back to following playback.
+   *
+   * Not left to Radix's onValueCommit alone: it fires only if the value ended
+   * somewhere other than where the playhead was at pointer-down, and only if
+   * the slider still holds pointer capture at pointer-up. When either fails,
+   * `dragging` was never cleared and the bar froze on that value — through the
+   * next track too. Every way a press can end now lands here; the ref makes a
+   * second call from the same release a no-op.
+   */
+  const commit = () => {
+    const value = draggingRef.current
+    if (value === null) return
+    draggingRef.current = null
+    setDragging(null)
+    seek(value)
+  }
 
   const max = duration ?? 0
   const shown = dragging ?? position
@@ -45,11 +64,14 @@ export function SeekBar() {
       value={[Math.min(shown, max || 1)]}
       aria-label="Position"
       aria-valuetext={`${formatTime(shown)} of ${formatTime(max)}`}
-      onValueChange={([v]) => setDragging(v ?? 0)}
-      onValueCommit={([v]) => {
-        setDragging(null)
-        seek(v ?? 0)
+      onValueChange={([v]) => {
+        draggingRef.current = v ?? 0
+        setDragging(v ?? 0)
       }}
+      // Keyboard changes arrive here; pointer releases usually do too.
+      onValueCommit={commit}
+      onPointerUp={commit}
+      onLostPointerCapture={commit}
     >
       <Slider.Track className="relative h-0.5 w-full grow bg-line transition-[height] group-hover/seek:h-1">
         <Slider.Range className="absolute h-full bg-accent transition-all duration-100" />
