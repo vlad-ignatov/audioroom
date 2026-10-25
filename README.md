@@ -166,11 +166,18 @@ the probe stay because they cost nothing and still catch dead hosts.
 
 ### The signal chain
 
-```
-graphEl ─ source ─┬─ level gain ─ preamp ─ EQ ─ Reverb ─ Width ─ limiter ─┬─ volume ─ speakers
-                  │                         (each stage bypassable)        └─ analyser (visualizer)
-                  └─ loudness meter
-plainEl ─────────────────────────────────────────────────────────────────────────────── speakers
+```mermaid
+flowchart TD
+    G["graphEl<br/>routed through Web Audio"] --> S[source]
+    S -. measured by .-> M[loudness meter]
+    S --> L["level gain<br/>(loudness levelling)"]
+    L --> P[preamp]
+    P --> FX["EQ → Reverb → Width<br/>(each can be bypassed)"]
+    FX --> LIM[multiband limiter]
+    LIM -. read by .-> A["analyser<br/>(visualizer)"]
+    LIM --> V[volume]
+    V --> SP([speakers])
+    PE["plainEl<br/>never touches Web Audio"] --> SP
 ```
 
 Each effect is a *stage*, addressed only by its input and output nodes.
@@ -352,17 +359,21 @@ MediaSource blob, so the equalizer always works on HLS stations.
 ## Project layout
 
 ```
-electron/          main process: window, menus, context menus, media:// file
-                   serving and conversion, SQLite library, tag writing
-src/audio/         engine (graph, stages, routing), equalizer, limiter,
-                   loudness, effects, stream probe, now playing
-src/commands/      every user action, defined once: menus, shortcuts and
-                   buttons all run commands by id
-src/store/         zustand stores: station library, local library, play queue,
-                   player, equalizer, effects, levelling, table, interface
-src/components/    station table, library tree and queue, equalizer, effects,
-                   visualizer, player bar, dialogs
-src/api/           radio-browser.info client
+electron/        main process: window, menus, context menus,
+                 media:// file serving and conversion, SQLite
+                 library, tag writing
+src/audio/       engine (graph, stages, routing), equalizer,
+                 limiter, loudness, effects, stream probe, now
+                 playing
+src/commands/    every user action, defined once: menus,
+                 shortcuts and buttons all run commands by id
+src/store/       zustand stores: station library, local library,
+                 play queue, player, equalizer, effects,
+                 levelling, table, interface
+src/components/  station table, library tree and queue,
+                 equalizer, effects, visualizer, player bar,
+                 dialogs
+src/api/         radio-browser.info client
 ```
 
 ## Acknowledgements
