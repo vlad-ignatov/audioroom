@@ -332,6 +332,11 @@ async function serve(request) {
     return new Response(null, { status: 200, headers: { ...headers, 'Content-Length': String(stat.size) } })
   }
 
+  // No byte to read, and a stream over bytes 0 to -1 throws.
+  if (stat.size === 0) {
+    return new Response(null, { status: 200, headers: { ...headers, 'Content-Length': '0' } })
+  }
+
   const range = parseRange(request.headers.get('range'), stat.size)
   if (range?.invalid) {
     return new Response(null, {
