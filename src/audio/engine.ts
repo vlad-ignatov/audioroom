@@ -10,9 +10,10 @@ import {
   DEFAULT_TARGET_LUFS,
   SAMPLE_INTERVAL_MS,
   measureStreamLoudness,
+  measureFileLoudness,
 } from './loudness'
 import type { Capability } from '@/types/station'
-import { desktop, isDesktop, isLocalFile, playableUrl } from '@/lib/desktop'
+import { isDesktop, isLocalFile, playableUrl } from '@/lib/desktop'
 
 export type EngineStatus =
   | 'idle'
@@ -107,11 +108,74 @@ const LIVE_GRAPH_KEY = 'audio.liveStreamGraphOk'
 const PREROLL_TIMEOUT_MS = 6000
 
 /**
- * How much live audio to measure when the silent pre-roll could not, or when
- * the track changes mid-stream. Long enough for the gating to see past an
- * intro; short enough that a wrong level is not endured for long.
+ * How much live audio to measure when nothing at all is known about a
+ * station's level. Short, because until then it plays uncorrected.
  */
 const LIVE_WINDOW_S = 6
+
+/**
+ * The one check of a station's starting level against what is actually
+ * playing, this far in.
+ *
+ * The starting level comes from the few seconds a stream server sends on
+ * connect — the same burst for every listener, so reconnecting reads it again
+ * rather than averaging it out. Measured on real stations, that burst read
+ * 2–5 dB off a 30 s reading, and a burst that lands on a fade or a jingle is
+ * off by far more. Twenty seconds spans enough music to be trusted.
+ */
+const VERIFY_WINDOW_S = 20
+/** How far the live check may disagree before the level is corrected, LU. */
+const VERIFY_TOLERANCE_LU = 2
+/**
+ * An opening that reads this much quieter than the station's history is
+ * taken for a quiet moment, not a quieter station.
+ */
+const DISTRUST_LU = 3
+/**
+ * The most an unconfirmed reading may boost by, dB. Too quiet for twenty
+ * seconds is harmless; ten decibels too loud, into the limiter, is not.
+ */
+const PROVISIONAL_MAX_BOOST_DB = 6
+/** Ramp for a change the listener asked for, seconds (time constant). */
+const REQUESTED_CHANGE_S = 0.25
+/** Ramp for an automatic correction mid-song, seconds (time constant). */
+const CORRECTION_S = 1.5
+
+/**
+ * How long a file waits for its measurement before it starts at its own
+ * level. Shorter than for a stream, which has to connect anyway: a file is
+ * ready at once, so this is a delay the listener hears. The measurement
+ * carries on, and is applied when it lands.
+ */
+const FILE_WAIT_MS = 2500
+
+/** A loudness reading taken before playback starts. */
+interface LevelReading {
+  lufs: number | null
+  /** Measured over a whole file: exact, nothing to check later. */
+  exact: boolean
+  /** A file measurement that did not arrive in time, still on its way. */
+  later?: Promise<number | null>
+}
+
+/**
+ * Whole-file measurements, by file URL, for this session. Shared between the
+ * track playing and the next one being measured ahead of it.
+ */
+const fileLoudness = new Map<string, Promise<number | null>>()
+
+function fileLoudnessOf(url: string): Promise<number | null> {
+  let pending = fileLoudness.get(url)
+  if (!pending) {
+    pending = measureFileLoudness(playableUrl(url))
+    fileLoudness.set(url, pending)
+    // A failure may be a share that is asleep; ask again next time.
+    void pending.then((lufs) => {
+      if (lufs === null) fileLoudness.delete(url)
+    })
+  }
+  return pending
+}
 
 /** Fade-in when the correction lands: long enough to avoid a click. */
 const LEVEL_FADE_S = 0.08
@@ -234,6 +298,11 @@ export class AudioEngine {
    * without measuring again.
    */
   private measuredLufs: number | null = null
+  /**
+   * Whether `measuredLufs` is confirmed — by a whole-file measurement, the
+   * station's history or the live check — and may boost at full strength.
+   */
+  private levelVerified = false
   /**
    * Analyser fed straight from the source, before the volume gain.
    *
@@ -644,12 +713,7 @@ export class AudioEngine {
         capability: outcome.capability,
         message: outcome.reason,
       })
-      if (pipeline === 'graph' && pendingLevel) {
-        const measured = await this.settleLevel(pendingLevel, gen)
-        // No silent measurement (a codec the decoder will not take piecemeal,
-        // an HLS playlist): take one window of what is playing instead.
-        if (!measured) this.measureLive(gen)
-      }
+      if (pipeline === 'graph' && pendingLevel) await this.settleLevel(pendingLevel, gen)
       // Chromium routes live streams correctly; the check exists for WebKit,
       // which the desktop build never runs on.
       if (!isDesktop && pipeline === 'graph' && this.liveStreamGraphOk === null) {
@@ -772,10 +836,10 @@ export class AudioEngine {
     this.levelingEnabled = on
     if (!on) {
       this.stopMetering()
-      this.applyLevelGain(0)
+      this.applyLevelGain(0, REQUESTED_CHANGE_S)
       return
     }
-    this.updateLevelGain()
+    this.updateLevelGain(REQUESTED_CHANGE_S)
     // Switched on mid-play: nothing was measured while it was off, so start
     // now rather than waiting for the next station.
     if (this.state.loudnessLufs === null) this.remeasure()
@@ -783,7 +847,10 @@ export class AudioEngine {
 
   setLevelingTarget(lufs: number): void {
     this.levelingTarget = lufs
-    this.updateLevelGain()
+    // Asked for, and listened for: quick, unlike the drift of a correction.
+    this.updateLevelGain(REQUESTED_CHANGE_S)
+    // With no reading yet every target is the same 0 dB; start one.
+    if (this.measuredLufs === null && this.meterTimer === null) this.remeasure()
   }
 
   /** Called with each new reading so the library can remember it per station. */
@@ -800,71 +867,130 @@ export class AudioEngine {
    * inaudible — the element has not started producing samples yet — and
    * guarantees nothing is ever heard at the wrong level.
    */
-  private beginLevel(url: string): Promise<number | null> {
+  private beginLevel(url: string): Promise<LevelReading> {
     if (!this.levelingEnabled) {
       this.setLevelGainNow(1)
-      return Promise.resolve(null)
+      return Promise.resolve({ lufs: null, exact: false })
     }
 
     this.setLevelGainNow(0)
+
+    // A file is measured whole, never by its opening: intros are quiet, and
+    // levelling a song by its first seconds boosted a loud one by 12 dB.
+    if (isLocalFile(url)) {
+      const measured = fileLoudnessOf(url)
+      let timer = 0
+      const late = new Promise<LevelReading>((resolve) => {
+        timer = window.setTimeout(() => resolve({ lufs: null, exact: true, later: measured }), FILE_WAIT_MS)
+      })
+      return Promise.race([measured.then((lufs): LevelReading => ({ lufs, exact: true })), late]).finally(() =>
+        clearTimeout(timer),
+      )
+    }
+
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), PREROLL_TIMEOUT_MS)
-    const opening = () => measureStreamLoudness(playableUrl(url), { signal: controller.signal })
-    // A song's opening says little about the song — intros are quiet — so a
-    // local file is measured whole. The stream method stays as the fallback
-    // for when the whole-track measurement is unavailable.
-    const measured = isLocalFile(url)
-      ? this.measureWholeFile(url, controller.signal).then((lufs) => lufs ?? opening())
-      : opening()
-    return measured.finally(() => clearTimeout(timer))
-  }
-
-  /** Whole-track loudness from the main process; null if it cannot say in time. */
-  private measureWholeFile(url: string, signal: AbortSignal): Promise<number | null> {
-    const bridge = desktop
-    if (!bridge) return Promise.resolve(null)
-    return new Promise((resolve) => {
-      signal.addEventListener('abort', () => resolve(null), { once: true })
-      bridge.measureLoudness(url).then(resolve, () => resolve(null))
-    })
+    return measureStreamLoudness(playableUrl(url), { signal: controller.signal })
+      .then((lufs): LevelReading => ({ lufs, exact: false }))
+      .finally(() => clearTimeout(timer))
   }
 
   /**
-   * Apply the correction and bring the graph up, once audio is ready.
-   *
-   * Returns whether a measurement was actually obtained. Without one the
-   * remembered level from a previous play is used, so the station at least
-   * starts near where it was last time rather than raw.
+   * Measure a file ahead of playing it — the next track in the list — so it
+   * starts at its level without waiting.
+   */
+  prepareLevel(url: string): void {
+    if (this.levelingEnabled && isLocalFile(url)) void fileLoudnessOf(url)
+  }
+
+  /**
+   * Apply the starting correction and bring the graph up, once audio is ready,
+   * then arrange for it to be checked against what is actually playing.
    *
    * The fade is short enough to be heard as the start of playback rather than
    * as a fade, and long enough to avoid a click from a step change in gain.
    */
-  private async settleLevel(pending: Promise<number | null>, gen: number): Promise<boolean> {
-    let lufs: number | null = null
+  private async settleLevel(pending: Promise<LevelReading>, gen: number): Promise<void> {
+    let reading: LevelReading = { lufs: null, exact: false }
     try {
-      lufs = await pending
+      reading = await pending
     } catch {
-      lufs = null
+      // Measured live instead, below.
     }
-    if (gen !== this.generation) return true
+    if (gen !== this.generation) return
 
-    const measured = lufs !== null
-    this.measuredLufs = lufs ?? this.seedLufs
-    const db = this.measuredLufs === null ? 0 : correctionDb(this.measuredLufs, this.levelingTarget)
+    if (this.isFile) {
+      this.settleFileLevel(reading, gen)
+      return
+    }
 
-    if (!this.ctx || !this.levelGain) return measured
+    const opening = reading.lufs
+    const history = this.seedLufs
+    // An opening well below this station's usual level is more likely a fade,
+    // a pause or a jingle in the connect burst than a quieter station.
+    const start =
+      opening !== null && history !== null && opening < history - DISTRUST_LU
+        ? history
+        : (opening ?? history)
+    this.measuredLufs = start
+    this.levelVerified = reading.exact || history !== null
+    const db = this.correction()
+
+    if (!this.ctx || !this.levelGain) return
     const now = this.ctx.currentTime
     const target = this.levelingEnabled ? dbToGain(db) : 1
     this.levelGain.gain.cancelScheduledValues(now)
     this.levelGain.gain.setValueAtTime(this.levelGain.gain.value, now)
     this.levelGain.gain.linearRampToValueAtTime(target, now + LEVEL_FADE_S)
+    this.patch({ levelGainDb: this.levelingEnabled ? db : 0, loudnessLufs: start })
 
-    this.patch({ levelGainDb: this.levelingEnabled ? db : 0 })
-    if (lufs !== null) {
-      this.patch({ loudnessLufs: lufs })
-      this.onLoudness?.(lufs, db)
+    if (reading.exact && start !== null) {
+      this.onLoudness?.(start, db)
+      return
     }
-    return measured
+    // Nothing known: take a quick reading first. Otherwise one check later on.
+    this.measureLive(gen, start === null ? LIVE_WINDOW_S : VERIFY_WINDOW_S)
+  }
+
+  /**
+   * A file's level: its whole-track measurement, or none at all.
+   *
+   * Nothing is guessed for a file. If it cannot be measured — too large, or
+   * not decodable outside the player — it plays at its own level, as in any
+   * other player, rather than at one inferred from a few seconds of it.
+   */
+  private settleFileLevel(reading: LevelReading, gen: number): void {
+    this.measuredLufs = reading.lufs
+    this.levelVerified = true
+    const db = this.correction()
+    if (this.ctx && this.levelGain) {
+      const now = this.ctx.currentTime
+      this.levelGain.gain.cancelScheduledValues(now)
+      this.levelGain.gain.setValueAtTime(this.levelGain.gain.value, now)
+      this.levelGain.gain.linearRampToValueAtTime(this.levelingEnabled ? dbToGain(db) : 1, now + LEVEL_FADE_S)
+    }
+    this.patch({ levelGainDb: this.levelingEnabled ? db : 0, loudnessLufs: reading.lufs })
+    if (reading.lufs !== null) this.onLoudness?.(reading.lufs, db)
+
+    // Too slow to wait for: it started at its own level, and moves once,
+    // early, when the measurement lands.
+    void reading.later?.then((lufs) => {
+      if (gen !== this.generation || lufs === null) return
+      this.measuredLufs = lufs
+      this.applyLevelGain(this.correction())
+      this.patch({ loudnessLufs: lufs })
+      this.onLoudness?.(lufs, this.state.levelGainDb)
+    })
+  }
+
+  /**
+   * The gain correction for the current reading and target, dB. An
+   * unconfirmed reading may cut freely but boost only so far.
+   */
+  private correction(): number {
+    if (this.measuredLufs === null) return 0
+    const db = correctionDb(this.measuredLufs, this.levelingTarget)
+    return this.levelVerified ? db : Math.min(db, PROVISIONAL_MAX_BOOST_DB)
   }
 
   /** Set the level gain with no ramp; only safe while nothing is audible. */
@@ -875,32 +1001,30 @@ export class AudioEngine {
     this.levelGain.gain.setValueAtTime(value, now)
   }
 
-  private applyLevelGain(db: number, timeConstant = 2): void {
+  private applyLevelGain(db: number, timeConstant = CORRECTION_S): void {
     if (!this.ctx || !this.levelGain) return
     const target = this.levelingEnabled ? dbToGain(db) : 1
-    // A slow ramp: a fast one on a live measurement is audible as pumping.
+    // Automatic corrections ramp slowly: a fast one mid-song is heard as a jump.
     this.levelGain.gain.setTargetAtTime(target, this.ctx.currentTime, timeConstant)
     this.patch({ levelGainDb: this.levelingEnabled ? db : 0 })
   }
 
   /** Re-derive the gain from the standing measurement, e.g. after a target change. */
-  private updateLevelGain(): void {
-    if (this.measuredLufs === null) {
-      this.applyLevelGain(0)
-      return
-    }
-    this.applyLevelGain(correctionDb(this.measuredLufs, this.levelingTarget))
+  private updateLevelGain(timeConstant = CORRECTION_S): void {
+    this.applyLevelGain(this.correction(), timeConstant)
   }
 
   /**
-   * Measure one window of live audio and apply the result once.
+   * Measure a window of what is playing and correct the level by it.
    *
-   * Used when the silent pre-roll could not measure, and when levelling is
-   * switched on mid-play. The meter samples for LIVE_WINDOW_S, the correction
-   * is ramped in slowly enough not to be heard as a change, and then the
-   * meter stops: nothing here follows the music.
+   * A short window (LIVE_WINDOW_S) gives a first, provisional reading when
+   * nothing else is known, and is followed by the full check. The full check
+   * (VERIFY_WINDOW_S) confirms the reading: it corrects the level only if it
+   * disagrees by more than VERIFY_TOLERANCE_LU, lifts the cap on an
+   * unconfirmed boost, and is the last change made while the station plays.
+   * Nothing here follows the music.
    */
-  private measureLive(gen: number): void {
+  private measureLive(gen: number, windowS = LIVE_WINDOW_S): void {
     this.stopMetering()
     if (!this.meter || !this.levelingEnabled) return
     const meter = this.meter
@@ -912,17 +1036,22 @@ export class AudioEngine {
         return
       }
       meter.sample()
-      if (meter.seconds < LIVE_WINDOW_S) return
+      if (meter.seconds < windowS) return
 
       this.stopMetering()
       const lufs = meter.lufs
       // All silence or noise floor: nothing to level against, keep what we had.
       if (lufs === null) return
-      this.measuredLufs = lufs
-      const db = correctionDb(lufs, this.levelingTarget)
-      this.applyLevelGain(db)
-      this.patch({ loudnessLufs: lufs })
+      const final = windowS >= VERIFY_WINDOW_S
+      if (!final || this.measuredLufs === null || Math.abs(lufs - this.measuredLufs) > VERIFY_TOLERANCE_LU) {
+        this.measuredLufs = lufs
+      }
+      if (final) this.levelVerified = true
+      const db = this.correction()
+      if (Math.abs(db - this.state.levelGainDb) > 0.1) this.applyLevelGain(db)
+      this.patch({ loudnessLufs: this.measuredLufs })
       this.onLoudness?.(lufs, db)
+      if (!final) this.measureLive(gen, VERIFY_WINDOW_S)
     }, SAMPLE_INTERVAL_MS)
   }
 
@@ -936,14 +1065,14 @@ export class AudioEngine {
     if (this.state.status !== 'playing' || this.state.pipeline !== 'graph') return
     const url = this.active?.dataset.url
     if (this.isFile && url) {
-      // A file can still be measured whole; only fall back to listening.
+      // Measured whole or not at all; see settleFileLevel.
       const gen = this.generation
-      void this.measureWholeFile(url, new AbortController().signal).then((lufs) => {
-        if (gen !== this.generation) return
-        if (lufs === null) return this.measureLive(gen)
+      void fileLoudnessOf(url).then((lufs) => {
+        if (gen !== this.generation || lufs === null) return
         this.measuredLufs = lufs
-        const db = correctionDb(lufs, this.levelingTarget)
-        this.applyLevelGain(db)
+        this.levelVerified = true
+        const db = this.correction()
+        this.applyLevelGain(db, REQUESTED_CHANGE_S)
         this.patch({ loudnessLufs: lufs })
         this.onLoudness?.(lufs, db)
       })

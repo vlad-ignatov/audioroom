@@ -149,6 +149,13 @@ export const usePlayer = create<PlayerState>()((set, get) => {
           .recordCapability(station.id, outcome.capability, outcome.url, outcome.reason)
       }
       updateMediaSession(station)
+      // Measure the next track while this one plays, so it starts levelled
+      // without a wait.
+      if (isLocalFile(station.url)) {
+        const { queue } = get()
+        const next = findPlayable(queue[queue.indexOf(station.id) + 1])
+        if (next) engine.prepareLevel(next.url)
+      }
       // Track metadata rides on its own connection, so it works even for
       // stations that are barred from the Web Audio graph. A local file has
       // no such thing; its tags were read when it was added.

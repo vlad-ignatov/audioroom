@@ -300,3 +300,47 @@ export async function measureStreamLoudness(
     return null
   }
 }
+
+/**
+ * Files larger than this are not measured: decoding holds the whole track in
+ * memory, about 350 MB for an hour of stereo even at the reduced rate below.
+ * 80 MB is half an hour of 320 kbps MP3, or a long song in FLAC.
+ */
+const MAX_FILE_BYTES = 80 * 1024 * 1024
+
+/**
+ * The rate files are decoded at for measuring. The decoder resamples to the
+ * context's rate; at half the usual rate a track takes half the memory, and
+ * what is lost above 11 kHz moved four rock tracks' readings by 0.06 LU at most.
+ */
+const FILE_MEASURE_RATE = 22050
+
+/**
+ * Loudness of a whole local file, in LUFS, measured the same way as a stream.
+ *
+ * A song's opening says nothing reliable about the song: intros are quiet, and
+ * levelling a track by its first seconds boosted a loud one by 12 dB. So the
+ * file is fetched and decoded whole, with Chromium's own decoders — every
+ * format that plays can be measured, with nothing to install.
+ *
+ * Null for a file too large to decode in memory, one that will not decode, or
+ * when aborted.
+ */
+export async function measureFileLoudness(url: string, signal?: AbortSignal): Promise<number | null> {
+  try {
+    const res = await fetch(url, { signal })
+    if (!res.ok) return null
+    const size = Number(res.headers.get('Content-Length'))
+    if (size > MAX_FILE_BYTES) {
+      void res.body?.cancel().catch(() => {})
+      return null
+    }
+    const bytes = await res.arrayBuffer()
+    if (signal?.aborted) return null
+    const decoded = await new OfflineAudioContext(1, 1, FILE_MEASURE_RATE).decodeAudioData(bytes)
+    if (signal?.aborted) return null
+    return await measureAudioBuffer(decoded)
+  } catch {
+    return null
+  }
+}
