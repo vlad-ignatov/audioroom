@@ -42,5 +42,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  server: { port: 5173 },
+  // A port of its own, and no wandering off it: Electron loads this exact URL
+  // (see DEV_URL in electron/main.cjs). Vite's default 5173 is shared with
+  // every other Vite project, and when it was taken the dev server moved to
+  // 5174 while Electron kept loading whatever held 5173.
+  server: { port: 5199, strictPort: true },
 })

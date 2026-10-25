@@ -16,7 +16,8 @@ const localFiles = require('./local-files.cjs')
 const libraryDb = require('./library-db.cjs')
 const tagWriter = require('./tag-writer.cjs')
 
-const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173'
+// Must match server.port in vite.config.ts.
+const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5199'
 const isDev = !app.isPackaged
 
 /** @type {BrowserWindow | null} */
