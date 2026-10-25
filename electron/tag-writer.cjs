@@ -14,6 +14,7 @@
 const { ipcMain } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
+const { onDisk, asSaved } = require('./volumes.cjs')
 
 const FIELDS = { title: 'title', artist: 'artist', album: 'album' }
 
@@ -68,8 +69,9 @@ function assertEditable(filePath) {
  * @param {string} filePath
  * @param {{ title?: string, artist?: string, album?: string }} fields
  */
-async function writeTags(filePath, fields) {
-  assertEditable(filePath)
+async function writeTags(savedPath, fields) {
+  assertEditable(savedPath)
+  const filePath = await onDisk(savedPath)
   const NodeID3 = require('node-id3')
   const original = await fs.promises.readFile(filePath)
   const body = stripId3v1(original)
@@ -123,7 +125,8 @@ async function findMp3s(dirPath, recursive, out = []) {
  */
 async function scanTags(sender, dirPath, recursive = true) {
   const mm = await import('music-metadata')
-  const files = await findMp3s(dirPath, recursive)
+  const real = await onDisk(dirPath)
+  const files = await findMp3s(real, recursive)
   const out = []
   let done = 0
   let lastReport = 0
@@ -131,7 +134,7 @@ async function scanTags(sender, dirPath, recursive = true) {
     try {
       const meta = await mm.parseFile(filePath, { duration: false, skipCovers: true })
       const { title, artist, album } = meta.common
-      out.push({ path: filePath, title, artist, album })
+      out.push({ path: asSaved(filePath, dirPath, real), title, artist, album })
     } catch {
       // Unreadable tags: nothing to fix that we could see.
     }

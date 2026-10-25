@@ -27,8 +27,13 @@ interface LocalLibraryState {
   addFiles: () => Promise<string | null>
   removeLooseFile: (path: string) => Promise<void>
   setExpanded: (path: string, open: boolean) => void
-  /** Read one directory level, unless it is already loaded or loading. */
+  /** Read one directory level, unless it is already loaded or loading; a failed read is tried again. */
   load: (path: string) => Promise<void>
+  /**
+   * Read again every folder that could not be read. A network share that was
+   * asleep, or a drive that was unplugged, may be back.
+   */
+  retryFailed: () => void
   /** Re-read every directory read so far; the disk may have changed. */
   refresh: () => Promise<void>
   /** Ask for tags of files on screen; batched, and each file asked once. */
@@ -204,7 +209,8 @@ export const useLocalLibrary = create<LocalLibraryState>()((set, get) => {
 
     load: async (path) => {
       const bridge = desktop
-      if (!bridge || get().listings[path]) return
+      const existing = get().listings[path]
+      if (!bridge || (existing && existing.status !== 'error')) return
       set((st) => ({ listings: { ...st.listings, [path]: { status: 'loading' } } }))
       let listing: Listing
       try {
@@ -215,6 +221,12 @@ export const useLocalLibrary = create<LocalLibraryState>()((set, get) => {
         listing = { status: 'error', message: readError(err) }
       }
       set((st) => ({ listings: { ...st.listings, [path]: listing } }))
+    },
+
+    retryFailed: () => {
+      for (const [path, listing] of Object.entries(get().listings)) {
+        if (listing.status === 'error') void get().load(path)
+      }
     },
 
     refresh: async () => {

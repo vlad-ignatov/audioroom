@@ -17,6 +17,7 @@ const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 const { Readable } = require('node:stream')
 const { pathToFileURL, fileURLToPath } = require('node:url')
+const { onDisk } = require('./volumes.cjs')
 
 const run = promisify(execFile)
 
@@ -298,7 +299,8 @@ async function measureLoudness(fileUrl) {
 async function serve(request) {
   let filePath
   try {
-    filePath = toPath(request.url)
+    // Saved paths may name a share that has since been remounted elsewhere.
+    filePath = await onDisk(toPath(request.url))
   } catch {
     return new Response('Bad media URL', { status: 400 })
   }
@@ -408,7 +410,10 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
  * a file manager would ("Disc 2" before "Disc 10"). Hidden entries are skipped.
  */
 async function listDir(dirPath) {
-  const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
+  // Read wherever the folder is now, but name what is found by the path it
+  // was saved under, so the renderer's keys stay the same.
+  const real = await onDisk(dirPath)
+  const entries = await fs.promises.readdir(real, { withFileTypes: true })
   const folders = []
   const files = []
   const images = []
@@ -419,7 +424,7 @@ async function listDir(dirPath) {
     let isFile = entry.isFile()
     if (entry.isSymbolicLink()) {
       try {
-        const stat = await fs.promises.stat(full)
+        const stat = await fs.promises.stat(path.join(real, entry.name))
         isDir = stat.isDirectory()
         isFile = stat.isFile()
       } catch {
@@ -453,7 +458,7 @@ async function listDir(dirPath) {
 async function readTags(filePath) {
   try {
     const mm = await import('music-metadata')
-    const meta = await mm.parseFile(filePath, { duration: false, skipCovers: true })
+    const meta = await mm.parseFile(await onDisk(filePath), { duration: false, skipCovers: true })
     const { title, artist, album } = meta.common
     return {
       title: title || undefined,
@@ -478,7 +483,7 @@ async function fileEntries(filePaths) {
     if (!covers.has(dir)) {
       let cover
       try {
-        const names = await fs.promises.readdir(dir)
+        const names = await fs.promises.readdir(await onDisk(dir))
         const images = names
           .filter((n) => !n.startsWith('.') && IMAGE_SET.has(path.extname(n).slice(1).toLowerCase()))
           .map((n) => ({ name: n, path: path.join(dir, n) }))
@@ -493,7 +498,7 @@ async function fileEntries(filePaths) {
   const out = []
   for (const filePath of filePaths) {
     try {
-      if (!(await fs.promises.stat(filePath)).isFile()) continue
+      if (!(await fs.promises.stat(await onDisk(filePath))).isFile()) continue
     } catch {
       continue
     }

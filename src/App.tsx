@@ -128,6 +128,11 @@ export default function App() {
 
   useEffect(() => {
     void useLocalLibrary.getState().loadRoots()
+    // Coming back to the window — typically from reconnecting a share in
+    // Finder — is the moment to look again at what could not be read.
+    const recover = () => useLocalLibrary.getState().retryFailed()
+    window.addEventListener('focus', recover)
+    return () => window.removeEventListener('focus', recover)
   }, [])
 
   const openEditor = useCallback((s: Station | null) => {

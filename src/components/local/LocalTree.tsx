@@ -16,7 +16,7 @@ import { FolderTagsDialog } from './FolderTagsDialog'
 type Row =
   | { kind: 'folder'; key: string; path: string; name: string; depth: number; root: boolean; open: boolean; cover?: string }
   | { kind: 'file'; key: string; file: DirFile; depth: number; loose?: boolean }
-  | { kind: 'note'; key: string; text: string; depth: number; error?: boolean }
+  | { kind: 'note'; key: string; text: string; depth: number; error?: boolean; path?: string }
 
 const COLUMNS = [
   { label: 'Name', width: 'minmax(260px, 2.6fr)' },
@@ -61,7 +61,7 @@ function flatten(
       return
     }
     if (listing.status === 'error') {
-      rows.push({ kind: 'note', key: `${path}\0note`, text: listing.message, depth: depth + 1, error: true })
+      rows.push({ kind: 'note', key: `${path}\0note`, text: listing.message, depth: depth + 1, error: true, path })
       return
     }
     for (const folder of listing.folders) walk(folder.path, folder.name, depth + 1, false)
@@ -271,6 +271,15 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
                       style={{ paddingLeft: 12 + row.depth * INDENT + 20 }}
                     >
                       {row.text}
+                      {row.error && row.path && (
+                        <button
+                          type="button"
+                          onClick={() => void load(row.path!)}
+                          className="ml-2 rounded px-1.5 not-italic text-ink-faint hover:bg-panel hover:text-ink"
+                        >
+                          Retry
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
