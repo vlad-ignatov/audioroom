@@ -2,7 +2,7 @@
   <img src="build/icons/128x128.png" width="96" height="96" alt="">
 </p>
 
-<h1 align="center">Player</h1>
+<h1 align="center">AudioRoom</h1>
 
 <p align="center">
   A desktop player for internet radio and your own music files, with a 10-band
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Player: the station library, with the equalizer open and the spectrum visualizer in the player bar" width="1000">
+  <img src="docs/screenshot.png" alt="AudioRoom: the station library, with the equalizer open and the spectrum visualizer in the player bar" width="1000">
 </p>
 
 ## Features
@@ -64,7 +64,7 @@
 
 Nothing in the code is tied to macOS or Linux, and electron-builder is set up
 to build a Windows installer, but no one has run it on Windows yet. If you
-try it, please [open an issue](https://github.com/vlad-ignatov/player/issues)
+try it, please [open an issue](https://github.com/vlad-ignatov/audioroom/issues)
 and say whether it works, even if everything was fine.
 
 Two features only run on macOS, because the problems they fix are macOS
@@ -83,8 +83,8 @@ There are no prebuilt downloads yet. You need:
 - Optionally, [ffmpeg](https://ffmpeg.org/) (see below).
 
 ```bash
-git clone https://github.com/vlad-ignatov/player.git
-cd player
+git clone https://github.com/vlad-ignatov/audioroom.git
+cd audioroom
 npm install
 npm run dev:app
 ```
@@ -124,9 +124,9 @@ database, `library.sqlite`, in the app's data folder:
 
 | Platform | Folder |
 |---|---|
-| macOS | `~/Library/Application Support/Player` |
-| Linux | `~/.config/Player` |
-| Windows | `%APPDATA%\Player` |
+| macOS | `~/Library/Application Support/AudioRoom` |
+| Linux | `~/.config/AudioRoom` |
+| Windows | `%APPDATA%\AudioRoom` |
 
 Equalizer, effects, levelling and table settings are kept in the same folder,
 in Chromium's local storage. Your music files are only read, except when you

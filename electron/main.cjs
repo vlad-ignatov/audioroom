@@ -8,6 +8,7 @@
 
 const { app, BrowserWindow, session, shell, ipcMain, globalShortcut } = require('electron')
 const path = require('node:path')
+const { migrateDataFolder } = require('./data-folder.cjs')
 const windowState = require('./window-state.cjs')
 const { buildMenu } = require('./menu.cjs')
 const contextMenu = require('./context-menu.cjs')
@@ -145,6 +146,9 @@ function createWindow() {
   return win
 }
 
+// Before anything reads or writes the data folder.
+migrateDataFolder()
+
 // Scheme privileges are read once, before ready; registering later is a no-op.
 localFiles.registerScheme()
 
@@ -199,7 +203,7 @@ if (!app.requestSingleInstanceLock()) {
 // The renderer reports what is playing so the window title can follow it.
 ipcMain.on('now-playing', (_event, text) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.setTitle(text ? `${text} — Player` : 'Player')
+  mainWindow.setTitle(text ? `${text} — AudioRoom` : 'AudioRoom')
 })
 
 app.on('will-quit', () => {

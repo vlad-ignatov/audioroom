@@ -1,5 +1,5 @@
 {
-  "name": "player",
+  "name": "audioroom",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -41,13 +41,13 @@
     "vite": "^8.2.2"
   },
   "main": "electron/main.cjs",
-  "productName": "Player",
-  "description": "Online radio, equalised",
+  "productName": "AudioRoom",
+  "description": "Internet radio and music player",
   "author": "vlad",
-  "desktopName": "player.desktop",
+  "desktopName": "audioroom.desktop",
   "build": {
-    "appId": "dev.vlad.player",
-    "productName": "Player",
+    "appId": "dev.vlad.audioroom",
+    "productName": "AudioRoom",
     "directories": {
       "output": "release",
       "buildResources": "build"
