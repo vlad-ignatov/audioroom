@@ -17,7 +17,7 @@ const path = require('node:path')
 /** @type {import('node:sqlite').DatabaseSync | null} */
 let db = null
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 function open() {
   if (db) return db
@@ -71,6 +71,15 @@ function open() {
       CREATE TABLE IF NOT EXISTS loose_files (
         path     TEXT PRIMARY KEY,
         position INTEGER NOT NULL
+      );
+    `)
+  }
+  if (version < 5) {
+    // The local library's play queue, in play order.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS queue (
+        position INTEGER PRIMARY KEY,
+        path     TEXT NOT NULL
       );
     `)
   }
@@ -233,6 +242,22 @@ function removeFolder(folderPath) {
   return listFolders()
 }
 
+function listQueue() {
+  return open()
+    .prepare('SELECT path FROM queue ORDER BY position')
+    .all()
+    .map((r) => r.path)
+}
+
+/** Replace the queue. It holds at most a thousand rows, so rewriting it whole is cheap. */
+function setQueue(paths) {
+  transaction((c) => {
+    c.exec('DELETE FROM queue')
+    const put = c.prepare('INSERT INTO queue (position, path) VALUES (?, ?)')
+    paths.forEach((p, i) => put.run(i, p))
+  })
+}
+
 function install() {
   ipcMain.handle('library:load', () => load())
   ipcMain.handle('library:write', (_event, ops) => write(ops))
@@ -242,6 +267,8 @@ function install() {
   ipcMain.handle('loose-files:list', () => listLooseFiles())
   ipcMain.handle('loose-files:add', (_event, filePaths) => addLooseFiles(filePaths))
   ipcMain.handle('loose-files:remove', (_event, filePath) => removeLooseFile(filePath))
+  ipcMain.handle('queue:list', () => listQueue())
+  ipcMain.handle('queue:set', (_event, paths) => setQueue(paths))
 }
 
 function close() {

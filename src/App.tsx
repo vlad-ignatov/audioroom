@@ -10,9 +10,9 @@ import { PlayerBar } from '@/components/player/PlayerBar'
 import { EqualizerPanel } from '@/components/equalizer/EqualizerPanel'
 import { SpacePanel } from '@/components/effects/SpacePanel'
 import { Dialog } from '@/components/ui/Dialog'
-import { LocalToolbar } from '@/components/local/LocalToolbar'
-import { LocalTree } from '@/components/local/LocalTree'
+import { LocalView } from '@/components/local/LocalView'
 import { useLocalLibrary } from '@/store/localLibrary'
+import { usePlayQueue } from '@/store/playQueue'
 import { useDesktopIntegration } from '@/hooks/useDesktopIntegration'
 import { useUi, type View } from '@/store/ui'
 import { installCommandDispatch } from '@/commands'
@@ -31,12 +31,33 @@ export default function App() {
 
   useEffect(() => {
     void useLocalLibrary.getState().loadRoots()
+    void usePlayQueue.getState().load()
     installCommandDispatch()
     // Coming back to the window — typically from reconnecting a share in
     // Finder — is the moment to look again at what could not be read.
-    const recover = () => useLocalLibrary.getState().retryFailed()
+    const recover = () => {
+      useLocalLibrary.getState().retryFailed()
+      void usePlayQueue.getState().recheck()
+    }
     window.addEventListener('focus', recover)
     return () => window.removeEventListener('focus', recover)
+  }, [])
+
+  // A file dropped anywhere but on a list would make the window navigate to
+  // it, leaving the app. Lists accept drops themselves (and so have already
+  // called preventDefault); everywhere else refuses them.
+  useEffect(() => {
+    const refuse = (e: DragEvent) => {
+      if (e.defaultPrevented) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    }
+    window.addEventListener('dragover', refuse)
+    window.addEventListener('drop', refuse)
+    return () => {
+      window.removeEventListener('dragover', refuse)
+      window.removeEventListener('drop', refuse)
+    }
   }, [])
 
   // Native menu items and hardware media keys.
@@ -81,10 +102,7 @@ export default function App() {
               </main>
             </>
           ) : (
-            <main className="flex min-w-0 flex-1 flex-col">
-              <LocalToolbar />
-              <LocalTree onNotify={notify} />
-            </main>
+            <LocalView onNotify={notify} />
           )}
         </div>
 

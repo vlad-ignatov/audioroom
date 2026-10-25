@@ -367,6 +367,7 @@ async function serve(request) {
 
 const AUDIO_SET = new Set(AUDIO_EXTENSIONS)
 const IMAGE_SET = new Set(['jpg', 'jpeg', 'png', 'webp'])
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /**
  * Images that sit with an album but are not its front cover: thumbnails
@@ -408,13 +409,12 @@ async function pickCover(images) {
   ranked.sort((a, b) => b.rank - a.rank || b.size - a.size)
   return ranked[0].path
 }
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 /**
- * One level of a directory: its subfolders and its audio files, sorted the way
- * a file manager would ("Disc 2" before "Disc 10"). Hidden entries are skipped.
+ * One level of a directory, unsorted: subfolders, audio files and images.
+ * Hidden entries are skipped, and symlinks count as what they point at.
  */
-async function listDir(dirPath) {
+async function readLevel(dirPath) {
   // Read wherever the folder is now, but name what is found by the path it
   // was saved under, so the renderer's keys stay the same.
   const real = await onDisk(dirPath)
@@ -445,14 +445,88 @@ async function listDir(dirPath) {
     }
   }
   const byName = (a, b) => collator.compare(a.name, b.name)
+  return { folders: folders.sort(byName), files: files.sort(byName), images }
+}
+
+/**
+ * One level of a directory: its subfolders and its audio files, sorted the way
+ * a file manager would ("Disc 2" before "Disc 10").
+ */
+async function listDir(dirPath) {
+  const { folders, files, images } = await readLevel(dirPath)
   // Also for a folder with no tracks of its own: a multi-disc album keeps its
   // cover beside the disc folders, which borrow it (see the renderer).
   const cover = await pickCover(images)
-  return {
-    folders: folders.sort(byName),
-    files: files.sort(byName),
-    cover: cover && pathToFileURL(cover).toString(),
+  return { folders, files, cover: cover && pathToFileURL(cover).toString() }
+}
+
+/**
+ * The audio files among dropped paths, folders walked in the order the tree
+ * shows them (subfolders first, then files), up to `limit` files.
+ *
+ * The walk stops at the limit rather than counting what is left: dropping the
+ * root of a large collection must cost a few directory reads, not a scan of
+ * the whole disk. Paths in `skip` (already queued) are passed over without
+ * counting against the limit.
+ *
+ * @returns {Promise<{ paths: string[], truncated: boolean }>}
+ */
+async function collectAudio(paths, limit, skip = []) {
+  const skipSet = new Set(skip)
+  const found = []
+  const taken = new Set()
+  /** Real paths of folders entered, so a symlink loop cannot recurse forever. */
+  const entered = new Set()
+  let truncated = false
+
+  const take = (filePath) => {
+    if (skipSet.has(filePath) || taken.has(filePath)) return
+    if (found.length >= limit) {
+      truncated = true
+      return
+    }
+    taken.add(filePath)
+    found.push(filePath)
   }
+
+  const walk = async (dirPath) => {
+    let real
+    try {
+      real = await fs.promises.realpath(await onDisk(dirPath))
+    } catch {
+      return
+    }
+    if (entered.has(real)) return
+    entered.add(real)
+    let level
+    try {
+      level = await readLevel(dirPath)
+    } catch {
+      return // unreadable: skip it, keep the rest of the drop
+    }
+    for (const folder of level.folders) {
+      if (truncated) return
+      await walk(folder.path)
+    }
+    for (const file of level.files) {
+      if (truncated) return
+      take(file.path)
+    }
+  }
+
+  for (const raw of paths) {
+    if (truncated) break
+    const p = path.resolve(raw)
+    let stat
+    try {
+      stat = await fs.promises.stat(await onDisk(p))
+    } catch {
+      continue
+    }
+    if (stat.isDirectory()) await walk(p)
+    else if (stat.isFile() && AUDIO_SET.has(path.extname(p).slice(1).toLowerCase())) take(p)
+  }
+  return { paths: found, truncated }
 }
 
 /**
@@ -480,9 +554,11 @@ async function readTags(filePath) {
 
 /**
  * Describe files added on their own, like a listing's file entries, each with
- * the cover of the folder it sits in. Files no longer on disk are left out.
+ * the cover of the folder it sits in. Files no longer on disk are left out,
+ * or with `keepMissing` kept and marked, for a list whose drive may just be
+ * unmounted.
  */
-async function fileEntries(filePaths) {
+async function fileEntries(filePaths, keepMissing = false) {
   const covers = new Map()
   const coverOf = async (dir) => {
     if (!covers.has(dir)) {
@@ -502,9 +578,16 @@ async function fileEntries(filePaths) {
   }
   const out = []
   for (const filePath of filePaths) {
+    let exists = false
     try {
-      if (!(await fs.promises.stat(await onDisk(filePath))).isFile()) continue
+      exists = (await fs.promises.stat(await onDisk(filePath))).isFile()
     } catch {
+      // Missing.
+    }
+    if (!exists) {
+      if (keepMissing) {
+        out.push({ name: path.basename(filePath), path: filePath, url: pathToFileURL(filePath).toString(), missing: true })
+      }
       continue
     }
     out.push({
@@ -591,7 +674,8 @@ function install(getWindow) {
   })
 
   ipcMain.handle('list-dir', (_event, dirPath) => listDir(dirPath))
-  ipcMain.handle('file-entries', (_event, filePaths) => fileEntries(filePaths))
+  ipcMain.handle('file-entries', (_event, filePaths, keepMissing) => fileEntries(filePaths, keepMissing))
+  ipcMain.handle('collect-audio', (_event, paths, limit, skip) => collectAudio(paths, limit, skip))
 
   /** File picker for the local library; resolves to plain paths, [] on cancel. */
   ipcMain.handle('pick-audio-paths', async () => {

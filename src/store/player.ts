@@ -37,8 +37,14 @@ interface PlayerState {
    * next/prev follow the user's sort and stay in that list across tab switches.
    */
   queue: string[]
+  /**
+   * Which list `queue` came from. Lists keep the queue in step with what they
+   * show only while they own it, so a track that is both in the play queue
+   * and on screen in the tree is not pulled from one list into the other.
+   */
+  queueSource: QueueSource | null
 
-  setQueue: (ids: string[]) => void
+  setQueue: (ids: string[], source: QueueSource) => void
   select: (id: string) => void
   play: (station: Station) => Promise<void>
   toggle: (station: Station) => Promise<void>
@@ -53,8 +59,20 @@ interface PlayerState {
   seek: (seconds: number) => void
 }
 
+export type QueueSource = 'stations' | 'tree' | 'queue'
+
 const VOLUME_KEY = 'player.volume'
 const SELECTED_KEY = 'player.selectedId'
+const SOURCE_KEY = 'player.queueSource'
+
+function loadSource(): QueueSource | null {
+  try {
+    const raw = localStorage.getItem(SOURCE_KEY)
+    return raw === 'stations' || raw === 'tree' || raw === 'queue' ? raw : null
+  } catch {
+    return null
+  }
+}
 
 function loadSelected(): string | null {
   try {
@@ -110,8 +128,18 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     volume: initialVolume,
     muted: false,
     queue: [],
+    queueSource: loadSource(),
 
-    setQueue: (ids) => set({ queue: ids }),
+    setQueue: (ids, source) => {
+      if (source !== get().queueSource) {
+        try {
+          localStorage.setItem(SOURCE_KEY, source)
+        } catch {
+          // Like the selection, a convenience.
+        }
+      }
+      set({ queue: ids, queueSource: source })
+    },
 
     select: (id) => {
       saveSelected(id)

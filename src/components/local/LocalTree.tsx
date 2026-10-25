@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { tagsLookBroken } from '@/lib/encoding'
+import { setDraggedPaths } from '@/lib/trackDrag'
 import { cmd, commandScope, run } from '@/commands'
 import { useUi } from '@/store/ui'
 import { TagEditorDialog } from './TagEditorDialog'
@@ -134,10 +135,12 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
   }, [rows, listings, load])
 
   // Same rule as the station table: keep the queue in step with what is shown,
-  // but only while playback belongs to this list.
+  // but only while playback belongs to this list. A track played from the
+  // play queue may be on screen here too; next/previous then stay with the
+  // play queue.
   useEffect(() => {
-    const selected = usePlayer.getState().selectedId
-    if (selected && trackIds.includes(selected)) setQueue(trackIds)
+    const { selectedId: selected, queueSource } = usePlayer.getState()
+    if (selected && queueSource !== 'queue' && trackIds.includes(selected)) setQueue(trackIds, 'tree')
   }, [trackIds, setQueue])
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -183,13 +186,15 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
   }, [first, last, rows, requestTags])
 
   const editFile = useCallback((file: DirFile) => run('track.editInfo', { file }), [])
-  const playFile = (file: DirFile) => run('track.play', { file, queue: trackIds })
+  const playFile = (file: DirFile) => run('track.play', { file, source: 'tree', queue: trackIds })
 
   /** What a right-click (or a key) on a row offers. */
   const rowCommands = (row: Row) => () => {
     if (row.kind === 'folder') {
       const path = row.path
       return [
+        cmd('tracks.enqueue', { paths: [path] }),
+        '-' as const,
         cmd('folder.editInfo', { path }),
         needsFix.has(path) && cmd('folder.fixEncoding', { path }),
         '-' as const,
@@ -200,7 +205,8 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
     if (row.kind === 'file') {
       const { file } = row
       return [
-        cmd('track.play', { file, queue: trackIds }),
+        cmd('track.play', { file, source: 'tree', queue: trackIds }),
+        cmd('tracks.enqueue', { paths: [file.path] }),
         '-' as const,
         cmd('track.editInfo', { file }),
         cmd('file.reveal', { path: file.path }),
@@ -349,6 +355,8 @@ const FolderRow = memo(function FolderRow({
       aria-expanded={row.open}
       aria-level={row.depth + 1}
       tabIndex={0}
+      draggable
+      onDragStart={(e) => setDraggedPaths(e, [row.path])}
       title={row.root ? row.path : undefined}
       onClick={onToggle}
       onKeyDown={(e) => {
@@ -451,6 +459,8 @@ const FileRow = memo(function FileRow({
       role="row"
       aria-level={depth + 1}
       tabIndex={0}
+      draggable
+      onDragStart={(e) => setDraggedPaths(e, [file.path])}
       title={file.name}
       onDoubleClick={() => onPlay(file)}
       style={{ gridTemplateColumns: TEMPLATE }}

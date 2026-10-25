@@ -5,7 +5,7 @@
 // still run in a plain browser during development, so callers treat
 // `window.desktop` as optional.
 
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 /** @type {Set<(action: string) => void>} */
 const mediaKeyListeners = new Set()
@@ -98,8 +98,13 @@ contextBridge.exposeInMainWorld('desktop', {
   },
 
   /** Listing-style entries for single files, with their folder's cover. */
-  fileEntries(filePaths) {
-    return ipcRenderer.invoke('file-entries', filePaths)
+  fileEntries(filePaths, keepMissing = false) {
+    return ipcRenderer.invoke('file-entries', filePaths, keepMissing)
+  },
+
+  /** Audio files among dropped paths, folders walked, at most `limit` of them. */
+  collectAudio(paths, limit, skip = []) {
+    return ipcRenderer.invoke('collect-audio', paths, limit, skip)
   },
 
   /** Show a context menu; resolves to the chosen item's id, or null. */
@@ -110,6 +115,21 @@ contextBridge.exposeInMainWorld('desktop', {
   /** Select a file or folder in Finder / the file manager. */
   revealFile(filePath) {
     return ipcRenderer.invoke('reveal-file', filePath)
+  },
+
+  /** Where a file dropped from the OS lives; `File.path` is gone in Electron 32+. */
+  pathForFile(file) {
+    return webUtils.getPathForFile(file)
+  },
+
+  /** The local library's play queue, as paths in play order. */
+  queue: {
+    list() {
+      return ipcRenderer.invoke('queue:list')
+    },
+    set(paths) {
+      return ipcRenderer.invoke('queue:set', paths)
+    },
   },
 
   /** Single files in the local library, beside the root folders. */

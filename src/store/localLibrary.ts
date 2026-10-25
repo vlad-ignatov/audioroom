@@ -94,8 +94,11 @@ function indexListing(path: string, listing: DirListing, listings: Record<string
   }
 }
 
-/** Index single files: each takes the cover of the folder it sits in. */
-function indexLooseFiles(files: LooseFileEntry[]): void {
+/**
+ * Index files that were not found through a listing — single files, queued
+ * tracks — so the player can find them: each takes the cover of its folder.
+ */
+export function indexFiles(files: LooseFileEntry[]): void {
   for (const file of files) {
     fileIndex.set(file.url, file)
     if (file.cover) coverIndex.set(file.url, playableUrl(file.cover))
@@ -106,7 +109,7 @@ function indexLooseFiles(files: LooseFileEntry[]): void {
 async function describeLooseFiles(paths: string[]): Promise<LooseFileEntry[]> {
   if (!desktop || paths.length === 0) return []
   const files = await desktop.fileEntries(paths)
-  indexLooseFiles(files)
+  indexFiles(files)
   return files
 }
 

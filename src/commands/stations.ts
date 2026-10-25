@@ -28,7 +28,7 @@ defineCommands({
     keys: ['Enter', 'Space'],
     run: ({ station, queue }) => {
       const player = usePlayer.getState()
-      player.setQueue(queue)
+      player.setQueue(queue, 'stations')
       return player.toggle(current(station))
     },
   },

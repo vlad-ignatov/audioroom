@@ -66,7 +66,7 @@ export function StationTable({ onBrowseDirectory }: Props) {
   useEffect(() => {
     const ids = rows.map((r) => r.id)
     const { selectedId } = usePlayer.getState()
-    if (!selectedId || ids.includes(selectedId)) setQueue(ids)
+    if (!selectedId || ids.includes(selectedId)) setQueue(ids, 'stations')
   }, [rows, setQueue])
 
   const virtualizer = useVirtualizer({

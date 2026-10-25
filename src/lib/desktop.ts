@@ -76,6 +76,8 @@ export interface FolderAddResult {
 export interface LooseFileEntry extends DirFile {
   /** `file://` URL of the cover in the file's folder, if any. */
   cover?: string
+  /** Not on disk when last looked; only when asked to keep missing files. */
+  missing?: true
 }
 
 export interface LooseFilesAddResult {
@@ -134,10 +136,21 @@ export interface DesktopBridge {
     recursive?: boolean,
   ): Promise<ScannedTags[]>
   pickAudioPaths(): Promise<string[]>
-  fileEntries(paths: string[]): Promise<LooseFileEntry[]>
+  fileEntries(paths: string[], keepMissing?: boolean): Promise<LooseFileEntry[]>
+  /**
+   * The audio files among these paths, folders walked depth first in tree
+   * order, stopping at `limit`. Paths in `skip` are left out and not counted.
+   */
+  collectAudio(paths: string[], limit: number, skip?: string[]): Promise<{ paths: string[]; truncated: boolean }>
   /** Pop up a context menu at a point in the page; resolves to the chosen id, or null. */
   showContextMenu(items: ContextMenuItem[], position: { x: number; y: number }): Promise<number | null>
   revealFile(path: string): Promise<void>
+  /** The path of a file dropped from the OS. */
+  pathForFile(file: File): string
+  queue: {
+    list(): Promise<string[]>
+    set(paths: string[]): Promise<void>
+  }
   looseFiles: {
     list(): Promise<string[]>
     add(paths: string[]): Promise<LooseFilesAddResult>
