@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { engine } from '@/audio/engine'
+import { limiterBandAt, type LimiterBand } from '@/audio/limiter'
 import { usePlayer } from '@/store/player'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +19,9 @@ interface Props {
  * three quarters of its width on the 10 kHz–22 kHz range where almost nothing
  * happens. We bucket the bins logarithmically so bass, mids and treble each get
  * a fair share of the display.
+ *
+ * Bars turn red where the limiter is holding a band down — the bass bars on a
+ * boosted kick drum, say — more strongly the harder it works.
  */
 export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -34,6 +38,10 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
     let raf = 0
     let stopped = false
     const smoothed = new Float32Array(bars)
+    /** How red each limiter band is drawn, 0–1; rises at once, fades out. */
+    const limiting: Record<LimiterBand, number> = { bass: 0, mids: 0, treble: 0 }
+    /** Which band each bar belongs to, by the bar's centre frequency. */
+    let barBands: LimiterBand[] = []
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -64,6 +72,11 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
         const maxHz = Math.min(18000, nyquist)
         const logMin = Math.log10(minHz)
         const logMax = Math.log10(maxHz)
+        if (barBands.length !== bars) {
+          barBands = Array.from({ length: bars }, (_, i) =>
+            limiterBandAt(10 ** (logMin + ((logMax - logMin) * (i + 0.5)) / bars)),
+          )
+        }
 
         for (let i = 0; i < bars; i++) {
           const loHz = 10 ** (logMin + ((logMax - logMin) * i) / bars)
@@ -81,12 +94,24 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
         }
       }
 
+      // Full red at 6 dB of reduction; under half a dB is not worth showing.
+      // Fading over most of a second keeps a single kick drum visible.
+      const reductions = live ? engine.getLimiterReduction() : []
+      for (const band of Object.keys(limiting) as LimiterBand[]) {
+        const db = reductions.find((r) => r.band === band)?.db ?? 0
+        const target = db <= -0.5 ? Math.min(1, 0.35 + (-db / 6) * 0.65) : 0
+        limiting[band] = Math.max(target, limiting[band] - 0.025)
+      }
+
       const gap = width / bars < 6 ? 1 : 1
       const barWidth = Math.max(1, width / bars - gap)
       const gradient = ctx.createLinearGradient(0, height, 0, 0)
       gradient.addColorStop(0, 'oklch(0.50 0.12 78)')
       gradient.addColorStop(0.8, 'oklch(0.75 0.15 78)')
       gradient.addColorStop(1, 'oklch(0.95 0.1 90)')
+      const hot = ctx.createLinearGradient(0, height, 0, 0)
+      hot.addColorStop(0, 'oklch(0.48 0.17 28)')
+      hot.addColorStop(1, 'oklch(0.72 0.19 28)')
 
       for (let i = 0; i < bars; i++) {
         // Asymmetric smoothing: rise fast so transients read, fall slowly so
@@ -103,6 +128,14 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
         ctx.beginPath()
         ctx.roundRect(x, height - h, barWidth, h, 0)
         ctx.fill()
+
+        const heat = barBands[i] ? limiting[barBands[i]] : 0
+        if (heat > 0 && value > 0.01) {
+          ctx.globalAlpha = heat
+          ctx.fillStyle = hot
+          ctx.fill()
+          ctx.globalAlpha = 1
+        }
       }
     }
 
@@ -125,5 +158,11 @@ export function Visualizer({ bars = 64, className, showIdleBaseline = true }: Pr
     }
   }, [bars, live, showIdleBaseline])
 
-  return <canvas ref={canvasRef} className={cn('block h-full w-full', className)} />
+  return (
+    <canvas
+      ref={canvasRef}
+      className={cn('block h-full w-full', className)}
+      title="Red bars: the limiter is holding that range down to stop a boost from clipping."
+    />
+  )
 }

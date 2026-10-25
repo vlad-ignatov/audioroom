@@ -1,5 +1,6 @@
 import type Hls from 'hls.js'
-import { BAND_Q, BAND_COUNT, EQ_FREQUENCIES, dbToGain, eqHeadroomDb, filterTypeForBand } from './eq'
+import { BAND_Q, BAND_COUNT, EQ_FREQUENCIES, dbToGain, filterTypeForBand } from './eq'
+import { createMultibandLimiter, type LimiterBand, type MultibandLimiter } from './limiter'
 import { probeStream } from './probe'
 import { DEFAULT_REVERB, renderImpulseResponse, type ImpulseOptions } from './fx'
 import {
@@ -222,8 +223,8 @@ export class AudioEngine {
   // ---- loudness levelling ----
   /** Applies the correction; sits before the EQ so stages see a steady level. */
   private levelGain: GainNode | null = null
-  /** Catches peaks created by boosting a quiet station. */
-  private limiter: DynamicsCompressorNode | null = null
+  /** Holds peaks that boosts (EQ, levelling, effects) push past full scale. */
+  private limiter: MultibandLimiter | null = null
   private meter: LoudnessMeter | null = null
   /**
    * The loudness the current correction was computed from. Levelling is
@@ -237,8 +238,8 @@ export class AudioEngine {
    * Analyser fed straight from the source, before the volume gain.
    *
    * Anything that needs to know whether audio is *arriving* must read here:
-   * `this.analyser` sits after the output gain, so it reads silence whenever
-   * the user is muted or at zero volume.
+   * `this.analyser` sits after levelling, the EQ and the effects, so it shows
+   * what they did rather than what the station sent.
    */
   private sourceAnalyser: AnalyserNode | null = null
   private meterTimer: number | null = null
@@ -402,20 +403,10 @@ export class AudioEngine {
     this.levelGain = ctx.createGain()
     this.levelGain.gain.value = 1
 
-    // A safety net against clipping, not a sound-shaping stage. It is a
-    // full-band compressor: whenever it acts, a bass hit turns *everything*
-    // down, heard as vocals ducking on each kick. So the threshold sits at full
-    // scale, where commercial masters already peak and where nothing short of
-    // a genuine over reaches it. At 0 dB the node's automatic makeup gain is
-    // also exactly 0 dB; any lower threshold adds makeup gain that makes the
-    // whole signal hotter and the limiter act even more often. EQ boosts get
-    // their headroom from the pre-gain instead (see preGainDb).
-    this.limiter = ctx.createDynamicsCompressor()
-    this.limiter.threshold.value = 0
-    this.limiter.knee.value = 0
-    this.limiter.ratio.value = 20
-    this.limiter.attack.value = 0.001
-    this.limiter.release.value = 0.1
+    // Holds whatever an EQ boost, a levelling boost or the effects push past
+    // full scale, a frequency band at a time, so a boosted kick drum pulls
+    // down the bass rather than the whole mix. Transparent until then.
+    this.limiter = createMultibandLimiter(ctx)
 
     // Measure the station as broadcast, upstream of our own correction, so the
     // reading does not chase the gain we just applied.
@@ -427,14 +418,20 @@ export class AudioEngine {
     this.output = ctx.createGain()
     this.output.gain.value = this.muted ? 0 : this.volume
 
+    // The visualizer's analyser taps the end of the processing chain, before
+    // the volume control (see rebuildChain): it shows the station as levelled,
+    // equalised and limited, and does not shrink when the volume goes down.
     this.analyser = ctx.createAnalyser()
     this.analyser.fftSize = 2048
     this.analyser.smoothingTimeConstant = 0.8
+    // The default -100…-30 dB range assumed a signal turned down by the
+    // volume control; at full level, loud music pins the bass bars to the top.
+    this.analyser.minDecibels = -90
+    this.analyser.maxDecibels = -20
 
     this.source.connect(this.levelGain)
     this.levelGain.connect(this.preamp)
-    this.output.connect(this.analyser)
-    this.analyser.connect(ctx.destination)
+    this.output.connect(ctx.destination)
 
     // Push every parameter that was set before the context existed.
     this.setReverbImpulse(this.reverbOpts)
@@ -512,14 +509,15 @@ export class AudioEngine {
   }
 
   /**
-   * Reconnect preamp -> [enabled stages in order] -> output.
+   * Reconnect preamp -> [enabled stages in order] -> limiter -> output, with
+   * the visualizer's analyser tapping the limiter's output.
    *
    * Every inter-stage link originates at the preamp or at a stage output, so
    * disconnecting exactly those leaves each stage's internal wiring intact and
    * makes bypassing a stage a matter of leaving it out of the list.
    */
   private rebuildChain(): void {
-    if (!this.ctx || !this.preamp || !this.output) return
+    if (!this.ctx || !this.preamp || !this.output || !this.analyser) return
     const all = [this.eqStage, this.reverbStage, this.widthStage]
     this.preamp.disconnect()
     for (const stage of all) stage?.output.disconnect()
@@ -536,11 +534,19 @@ export class AudioEngine {
       node = stage.output
     }
     if (this.limiter) {
-      this.limiter.disconnect()
-      node.connect(this.limiter)
-      node = this.limiter
+      this.limiter.output.disconnect()
+      node.connect(this.limiter.input)
+      node = this.limiter.output
     }
     node.connect(this.output)
+    // A dead end on purpose: an analyser needs no downstream connection to be
+    // fed, and leaving it off the output path keeps it out of the sound.
+    node.connect(this.analyser)
+  }
+
+  /** How hard each limiter band is working right now, dB (0 or less). */
+  getLimiterReduction(): { band: LimiterBand; db: number }[] {
+    return this.state.pipeline === 'graph' && this.limiter ? this.limiter.reduction() : []
   }
 
   getAnalyser(): AnalyserNode | null {
@@ -1206,27 +1212,11 @@ export class AudioEngine {
   }
 
   /**
-   * The gain applied ahead of the filter bank, in dB.
-   *
-   * A boost can only be clean if there is room above the signal for it:
-   * material mastered to 0 dBFS plus +8 dB of bass is well over, and the
-   * limiter would have to duck the whole mix to hold it. So the curve's
-   * boost is cancelled automatically, weighted by where music has energy (see
-   * eqHeadroomDb): a bass boost gets its full height back, while a treble
-   * boost costs almost nothing, so it is heard as more treble rather than as
-   * everything else getting quieter. It depends only on the curve, never on the music,
-   * so it cannot pump.
-   *
-   * The user's preamp is an offset from that clip-safe level, not an
-   * alternative to it: every position of the slider is heard, and pushing it
-   * above 0 is a deliberate choice to drive the limiter.
-   *
-   * With the EQ bypassed the preamp goes too — it is part of the equalizer.
+   * The gain applied ahead of the filter bank, in dB: the user's preamp.
+   * With the EQ bypassed it goes too — it is part of the equalizer.
    */
   private preGainDb(): number {
-    if (!this.eqEnabled) return 0
-    const rate = this.ctx?.sampleRate ?? 48000
-    return this.preampDb - eqHeadroomDb(this.gains, rate)
+    return this.eqEnabled ? this.preampDb : 0
   }
 
   private updatePreGain(): void {

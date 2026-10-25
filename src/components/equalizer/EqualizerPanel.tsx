@@ -1,13 +1,48 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as Slider from '@radix-ui/react-slider'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { EQ_FREQUENCIES } from '@/audio/eq'
+import { engine } from '@/audio/engine'
+import type { LimiterBand } from '@/audio/limiter'
 import { useEq } from '@/store/eq'
 import { usePlayer } from '@/store/player'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Icon } from '@/components/ui/Icon'
 import { BandSlider, GainTrack } from './BandSlider'
 import { cn } from '@/lib/utils'
+
+/** Reductions smaller than this are not worth pointing out. */
+const LIMITING_SHOWN_DB = -0.5
+/** How long a reading stays up, so a single kick drum can be read. */
+const LIMITING_HOLD_MS = 1200
+
+/**
+ * The band the limiter is working hardest on, or null when it is idle.
+ *
+ * Polled rather than pushed: the compressor only exposes its reduction as a
+ * property. Each reading is held for a moment, since limiting on a beat comes
+ * and goes faster than anyone can read it.
+ */
+function useLimiting(): { band: LimiterBand; db: number } | null {
+  const [shown, setShown] = useState<{ band: LimiterBand; db: number } | null>(null)
+  useEffect(() => {
+    let held: { band: LimiterBand; db: number; at: number } | null = null
+    const id = window.setInterval(() => {
+      const now = performance.now()
+      let worst: { band: LimiterBand; db: number } | null = null
+      for (const r of engine.getLimiterReduction()) if (!worst || r.db < worst.db) worst = r
+      if (worst && worst.db <= LIMITING_SHOWN_DB && (!held || worst.db <= held.db || now - held.at > LIMITING_HOLD_MS)) {
+        held = { ...worst, at: now }
+      } else if (held && now - held.at > LIMITING_HOLD_MS) {
+        held = null
+      }
+      const next = held ? { band: held.band, db: Math.round(held.db * 10) / 10 } : null
+      setShown((prev) => (prev?.band === next?.band && prev?.db === next?.db ? prev : next))
+    }, 100)
+    return () => clearInterval(id)
+  }, [])
+  return shown
+}
 
 export function EqualizerPanel() {
   const eq = useEq()
@@ -16,6 +51,7 @@ export function EqualizerPanel() {
   const [naming, setNaming] = useState(false)
   const [draftName, setDraftName] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
+  const limiting = useLimiting()
 
   // The filter bank only exists on the Web Audio path. On a station the server
   // will not let us process, the controls stay visible but inert — hiding them
@@ -147,6 +183,15 @@ export function EqualizerPanel() {
         <Button size="sm" onClick={eq.reset}>
           Reset
         </Button>
+
+        {limiting && !inert && (
+          <span
+            className="ml-auto font-mono text-[11px] tabular-nums text-warn"
+            title="A boost is pushing this band past full scale, so the limiter is holding it down. Lower the preamp to give it room."
+          >
+            Limiting {limiting.band} {limiting.db.toFixed(1)} dB
+          </span>
+        )}
 
         {inert && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-warn">
