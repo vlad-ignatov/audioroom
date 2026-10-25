@@ -1,140 +1,286 @@
-# Player
+<p align="center">
+  <img src="build/icons/128x128.png" width="96" height="96" alt="">
+</p>
 
-An Electron desktop player for online radio and local audio files: a
-searchable, sortable, customisable library, a 10-band equalizer, loudness
-levelling, and a live frequency visualizer. TypeScript + React 19 + Vite 8.
+<h1 align="center">Player</h1>
+
+<p align="center">
+  A desktop player for internet radio and your own music files, with a 10-band
+  equalizer, loudness levelling, room effects and a live spectrum visualizer.
+</p>
+
+<p align="center">
+  <img src="docs/screenshot.png" alt="Player: the station library, with the equalizer open and the spectrum visualizer in the player bar" width="1000">
+</p>
+
+## Features
+
+**Internet radio**
+
+- Search about 50,000 stations from [radio-browser.info](https://www.radio-browser.info/)
+  and add them to your library. HLS streams are supported.
+- A sortable, filterable station table, with columns you can reorder,
+  favourites and saved views.
+- The current artist and title, where the station broadcasts them. They are
+  shown in the window title and in the OS media controls.
+- Import M3U and PLS playlists. Back up the whole library and sound setup
+  to a file, and restore it on another machine.
+
+**Local music**
+
+- Add folders and single files, and browse them as a tree with tags,
+  duration, codec, bitrate and cover art.
+- Plays MP3, AAC, FLAC, Ogg Vorbis, Opus, WAV and WebM directly. ALAC, AIFF,
+  CAF and WMA files are converted once in the background, then played
+  ([see below](#local-files)).
+- A play queue next to the tree. Drag in files or folders from the tree or
+  from your file manager, reorder by dragging, and shuffle. The queue is kept
+  between sessions.
+- Edit MP3 title, artist and album, for one file or a whole folder. A repair
+  tool fixes Cyrillic tags that were saved in the wrong encoding.
+
+**Sound**
+
+- A 10-band equalizer with built-in presets, and your own.
+- A multiband limiter stops equalizer boosts from clipping without turning
+  down the whole mix. The visualizer turns red where it is working.
+- Loudness levelling (ITU-R BS.1770) brings stations and tracks to a similar
+  volume.
+- Reverb with five synthesised rooms, and a stereo width control.
+
+**Desktop**
+
+- Native menus and right-click menus, media keys and OS media controls.
+- Keyboard shortcuts for everything common. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>/</kbd>
+  lists them.
+
+## Platforms
+
+| Platform | Status | Package |
+|---|---|---|
+| macOS | Developed and tested | `.dmg` (Apple Silicon and Intel) |
+| Linux | Tested | AppImage |
+| Windows | **Expected to work, but never tested** | NSIS installer |
+
+Nothing in the code is tied to macOS or Linux, and electron-builder is set up
+to build a Windows installer, but no one has run it on Windows yet. If you
+try it, please [open an issue](https://github.com/vlad-ignatov/player/issues)
+and say whether it works, even if everything was fine.
+
+Two features only run on macOS, because the problems they fix are macOS
+problems:
+
+- Finding network shares that macOS has remounted under a new name
+  (`/Volumes/Music-1`).
+- Removing the `._` files macOS leaves on network shares after tags are edited.
+
+## Building from source
+
+There are no prebuilt downloads yet. You need:
+
+- [Node.js](https://nodejs.org/) 22.12 or newer, with npm. Node 20.19 or a
+  later 20.x release also works.
+- Optionally, [ffmpeg](https://ffmpeg.org/) (see below).
 
 ```bash
+git clone https://github.com/vlad-ignatov/player.git
+cd player
 npm install
-npm run dev:app  # Vite dev server + Electron, with hot reload
-npm run package  # type-check, bundle, and build the app
+npm run dev:app
 ```
 
-It started life as a browser app, and much of the design below is shaped by
-browser restrictions that the desktop shell has since removed: the main process
-adds CORS headers to every response, so every station that plays gets the full
-audio graph, and there is no mixed-content rule. The two-element engine and the
-probe remain because they cost nothing and still catch dead hosts.
+| Command | What it does |
+|---|---|
+| `npm run dev:app` | Runs the app with hot reload (Vite dev server plus Electron) |
+| `npm run dev` | Runs the interface in a browser only. Radio works; the local library needs the desktop app. |
+| `npm run typecheck` | Type-checks the project |
+| `npm run package` | Builds an installer for the current platform into `release/` |
+| `npm run package:dir` | Builds the app without an installer, for a quick test |
 
-## The constraint that shapes the design
+### Optional: ffmpeg
+
+Most formats play without anything extra. [ffmpeg](https://ffmpeg.org/) is
+only needed to convert a few that Chromium cannot play. It is not bundled
+with the app.
+
+| Format | macOS | Linux and Windows |
+|---|---|---|
+| WMA | needs ffmpeg | needs ffmpeg |
+| ALAC, AIFF, CAF | built in (`afconvert`) | needs ffmpeg |
+
+Without ffmpeg, those files show "Playing WMA files needs ffmpeg, which is
+not installed" instead of playing. Install it, then play the file again.
+
+- **macOS:** `brew install ffmpeg`. The app finds Homebrew and MacPorts
+  installs even when it is opened from the Dock, without a restart.
+- **Linux:** install ffmpeg from your distribution's package manager.
+- **Windows:** `winget install Gyan.FFmpeg`, or put `ffmpeg.exe` on your
+  `PATH` yourself. Restart the app afterwards so it sees the new `PATH`.
+
+## Where your data is kept
+
+The station library, local folders and play queue are stored in a SQLite
+database, `library.sqlite`, in the app's data folder:
+
+| Platform | Folder |
+|---|---|
+| macOS | `~/Library/Application Support/Player` |
+| Linux | `~/.config/Player` |
+| Windows | `%APPDATA%\Player` |
+
+Equalizer, effects, levelling and table settings are kept in the same folder,
+in Chromium's local storage. Your music files are only read, except when you
+edit their tags. ALAC, AIFF, CAF and WMA conversions are cached in
+`transcoded/` inside the same folder.
+
+---
+
+## How it works
+
+The rest of this file is for anyone who wants to know how it works. It also
+records several things that were measured rather than assumed.
+
+### Two audio elements
 
 An equalizer and a visualizer both need the Web Audio API, and Web Audio may
-only touch a stream whose server sends an `Access-Control-Allow-Origin` header.
+only process a stream whose server sends an `Access-Control-Allow-Origin` header.
 A cross-origin stream without one does not raise an error when routed through an
-audio graph — it outputs **silence**. Worse, `createMediaElementSource()` binds
-an element to the graph *permanently* and cannot be undone.
+audio graph. It plays **silence**. Worse, `createMediaElementSource()` binds
+an element to the graph *permanently*, and this cannot be undone.
 
 So the engine keeps two audio elements for the life of the page:
 
-- `graphEl` — bound to Web Audio, carries stations whose servers allow it
-- `plainEl` — **never** passed to the Web Audio API, carries the rest
+- `graphEl` is bound to Web Audio, and plays stations whose servers allow it.
+- `plainEl` is **never** passed to Web Audio, and plays the rest.
 
-Each station is probed before playback and routed to whichever element its
-server permits. Stations on the plain path still play; the EQ and visualizer are
-shown inert with the reason, rather than silently doing nothing.
+Each station is probed before playback and played on whichever element its
+server allows. Stations on the plain path still play. The equalizer and
+visualizer are shown inert, with the reason, rather than silently doing nothing.
+
+The project started as a browser app, and this design comes from browser
+restrictions. The desktop build has since removed most of them: the main
+process adds CORS headers to every response, so every station that plays gets
+the full audio graph, and there is no mixed-content rule. The two elements and
+the probe stay because they cost nothing and still catch dead hosts.
+
+### The signal chain
 
 ```
-graphEl ─ MediaElementSource ─ preamp ─┬─ EQ ─ Reverb ─ Width ─┬─ output ─ Analyser ─ speakers
-plainEl ──────────────────────────────┴─────(each bypassable)──┴──────────────────── speakers
+graphEl ─ source ─┬─ level gain ─ preamp ─ EQ ─ Reverb ─ Width ─ limiter ─┬─ volume ─ speakers
+                  │                         (each stage bypassable)        └─ analyser (visualizer)
+                  └─ loudness meter
+plainEl ─────────────────────────────────────────────────────────────────────────────── speakers
 ```
 
-Each effect is a *stage* addressed only by its input and output nodes. Bypassing
-one means leaving it out of the chain and reconnecting, rather than special-casing
-its wiring — every inter-stage link starts at the preamp or a stage output, so
-disconnecting exactly those leaves each stage's internals intact.
+Each effect is a *stage*, addressed only by its input and output nodes.
+Bypassing one means leaving it out of the chain and reconnecting the rest,
+without special cases for its wiring. Every link between stages starts at the
+preamp or at a stage's output, so disconnecting exactly those leaves each
+stage's internal wiring intact.
 
-Bands sit at the ISO octave centres (31 Hz … 16 kHz), Q ≈ 1.414 for one-octave
-bandwidth, ±12 dB, with band 0 a low shelf and band 9 a high shelf so the
-extremes move real energy. A preamp ahead of the chain recovers headroom when
-boosting.
+The visualizer reads the end of the chain, before the volume control. It shows
+the station as levelled, equalised and limited, and does not shrink when you
+turn the volume down.
 
-## Space effects
+### Equalizer and limiter
 
-The rack beside the equalizer adds two effects, both in the same graph and so
-subject to the same CORS rule:
+Bands sit at the ISO octave centres (31 Hz to 16 kHz), Q ≈ 1.414 for one-octave
+bandwidth, ±12 dB. Band 0 is a low shelf and band 9 a high shelf, so the
+extremes move real energy.
 
-- **Reverb** — a `ConvolverNode` fed an impulse response *synthesised at
-  runtime* (Room, Club, Hall, Cathedral, Plate), so there are no `.wav` assets
-  and room size is a live control. Plain decaying white noise sounds like hiss,
-  so each IR also gets a one-pole lowpass whose cutoff falls across the tail
-  (real rooms absorb treble faster than bass) plus discrete early reflections at
-  the front, which is most of what tells the ear how big a space is. Dry/wet uses
-  an equal-power crossfade; a linear one dips in loudness at the midpoint because
-  the two signals are uncorrelated and sum by power.
-- **Stereo width** — a mid-side matrix: `mid = (L+R)/2`, `side = (L-R)/2`,
-  `out = mid ± side × width`. Bit-exact passthrough at 1, mono at 0, exaggerated
-  above. Its input is forced to two channels so a mono stream upmixes instead of
-  landing entirely in the left speaker.
-An HRTF `PannerNode` for 3D placement was built and then removed: on radio
-material it read as a novelty rather than something anyone would leave on, and it
-only worked properly on headphones.
+Boosting a band of a track mastered to full scale pushes its peaks over
+0 dBFS, and something has to hold them. A full-band limiter does it by
+turning the whole mix down, so a boosted kick drum ducks the vocals with it.
+Here the signal is split by Linkwitz–Riley crossovers at 150 Hz and 4 kHz,
+each band is limited on its own, and the bands are summed into a soft
+clipper. A bass hit that would clip pulls down only the bass. The crossovers
+sum back to a flat response, so the stage changes nothing audible until it has
+to act. The built-in presets lower the preamp so their boosts have room.
 
-Measured on the live chain: width 0 gives L/R correlation **1.000** (true mono),
-width 1 gives **0.800** against the bypassed source's **0.817** (a real
-passthrough), and 1.5 / 2.0 widen to **0.557** / **0.274**. All five impulse
-responses are channel-decorrelated (|r| < 0.01), and every generated tail decays
-monotonically.
+### Loudness levelling
 
-## What was measured, not assumed
+Loudness follows ITU-R BS.1770: K-weighting, 400 ms blocks and two-stage gating.
 
-Against 250 of the directory's most-played stations, probed with a browser
-User-Agent:
+- **Local files** are decoded and measured whole, never by their opening
+  seconds. Quiet intros made loud songs get boosted by 12 dB. The next track
+  in the queue is measured while the current one plays, so it starts at the
+  right level.
+- **Streams** are measured on the few seconds the server sends on connect.
+  That burst is the same for every listener and was found to be 2–5 dB off a
+  30-second reading. It is a starting point only:
+  - an unconfirmed reading may boost by at most 6 dB;
+  - one 20-second live check then corrects it if it is off by more than 2 LU,
+    and after that the level stays put;
+  - each station's level is remembered for next time.
 
-| | share | consequence |
-|---|---|---|
-| Served over `https` | 58% | usable on a deployed https site |
-| **`http` only** | **42%** | **blocked as mixed content in production** |
-| Of the https ones, CORS-enabled | **92%** | equalizer and visualizer work |
-| Genuinely CORS-refusing | 1% | plays, but no EQ — the `plainEl` path |
+### Space effects
 
-Two things worth knowing:
+The effects rack beside the equalizer adds two effects. Both are in the same
+graph, so the same CORS rule applies to them.
 
-- **Plain-http streams, not CORS, are the real limitation.** Nothing in the
-  browser can fix them; only a proxy can, which this app deliberately does not
-  have. Each `http://` URL is retried over `https://`, which rescues a good
-  share; the rest are marked *Blocked*.
-- **On `http://localhost` everything works**, because mixed-content blocking
-  only applies to https pages. The app would look perfectly healthy in
-  development and lose those stations the day it was deployed. The desktop
-  build has no such rule, which is why it no longer shows a quality badge.
+- **Reverb**: a `ConvolverNode` fed an impulse response *synthesised at
+  runtime* (Room, Club, Hall, Cathedral, Plate). There are no `.wav` assets,
+  and room size is a live control. Plain decaying white noise sounds like
+  hiss, so each impulse response also gets a one-pole lowpass whose cutoff
+  falls across the tail (real rooms absorb treble faster than bass), plus
+  discrete early reflections at the front, which is most of what tells the
+  ear how big a space is. Dry/wet uses an equal-power crossfade. A linear one
+  dips in loudness at the midpoint, because the two signals are uncorrelated
+  and sum by power.
+- **Stereo width**: a mid-side matrix: `mid = (L+R)/2`, `side = (L-R)/2`,
+  `out = mid ± side × width`. Width 1 passes the signal through bit-exact,
+  0 is mono, and above 1 is exaggerated. The input is forced to two channels,
+  so a mono stream is upmixed instead of landing entirely in the left speaker.
 
-Some servers vary their response by User-Agent — one station refuses `curl`
-outright while returning `Access-Control-Allow-Origin: *` to a browser. Station
-capability is therefore determined at play time from the browser itself, and
-cached for 24 hours rather than permanently.
+An HRTF `PannerNode` for 3D placement was built and then removed. On radio
+material it sounded like a novelty, not something anyone would leave on, and
+it only worked properly on headphones.
 
-## Verified behaviour
+Measured on the live chain:
 
-Driven through the Chrome DevTools Protocol against live servers:
+- Width 0 gives an L/R correlation of **1.000** (true mono).
+- Width 1 gives **0.800**, against the bypassed source's **0.817**: a real
+  passthrough.
+- Width 1.5 and 2.0 widen it to **0.557** and **0.274**.
 
-| station | capability | pipeline | analyser |
-|---|---|---|---|
-| CORS-clean MP3 | `full` | graph | signal present |
-| HLS (`.m3u8`) | `full` | graph | signal present |
-| CORS-refusing ×2 | `playback-only` | plain | n/a — still plays |
-| Dead host | `unavailable` | — | error surfaced |
+All five impulse responses have decorrelated channels (|r| < 0.01), and
+every generated tail decays steadily.
 
-HLS is immune to both problems: `hls.js` feeds the element a same-origin
-MediaSource blob, so the EQ always works there.
+### Local files
 
-## Now playing
+The renderer cannot load `file://` media, so files are served through a private
+`media://` scheme. Its handler answers Range requests, which is what makes
+seeking work, and sends permissive CORS headers so files go through the same
+audio graph as radio.
 
-There is no way to get the current track from a media element, so the player
-tries two independent routes and remembers which one worked for a station:
+Chromium has no decoder for ALAC or WMA, and cannot read AIFF, CAF or ASF
+files. Files it cannot play are converted once into a cache, and the handler
+serves the converted file at the original URL:
 
-1. **A status endpoint** — `/status-json.xsl`, `/stats?json=1`,
-   `/currentsong?sid=1` on the stream's own host. A few kilobytes, and no custom
-   request header, so it needs no CORS preflight.
-2. **ICY in-stream metadata** — requires the `Icy-MetaData: 1` request header,
-   which is **not** CORS-safelisted. That triggers a preflight, and many stream
-   servers never answer it. Of six stations tested, three responded to the
-   preflight and three refused. Where it works we scan the byte stream for
-   `StreamTitle='...'` rather than honouring `icy-metaint`, whose header most
-   servers do not expose to script anyway.
+- lossless sources become FLAC, so nothing is lost;
+- WMA becomes Opus, at a bitrate above the source's.
+
+The renderer never sees the difference: same URL, same seeking, same audio
+graph.
+
+### Now playing
+
+A media element has no way to report the current track, so the player tries
+two independent sources and remembers which one worked for each station:
+
+1. **A status endpoint** on the stream's own host: `/status-json.xsl`,
+   `/stats?json=1` or `/currentsong?sid=1`. It costs a few kilobytes, and the
+   request has no custom header, so no CORS preflight is needed.
+2. **ICY metadata inside the stream.** This requires the `Icy-MetaData: 1`
+   request header, which is **not** CORS-safelisted. That triggers a
+   preflight, which many stream servers never answer: of six stations tested,
+   three answered it and three refused. Where it works, the byte stream is
+   scanned for `StreamTitle='...'` rather than read at the `icy-metaint`
+   offset, because most servers do not expose that header to scripts anyway.
 
 Measured across the starter library:
 
-| station | route | result |
+| station | source | result |
 |---|---|---|
 | Heart 80s | ICY | artist and title |
 | WALM Vinyl HD | status | title |
@@ -144,42 +290,81 @@ Measured across the starter library:
 
 Roughly half of stations expose a usable track. Aardvark is the instructive
 case: `curl` *can* read its ICY metadata, but a browser cannot, because the
-server does not answer the preflight. That is a browser restriction, not a
-missing feature.
+server does not answer the preflight.
 
-Cost is bounded: the ICY scan aborts after 96 KB (in practice a title turns up
-in 15–55 KB), the status route costs a few KB, polling is every 25 s, it pauses
-while the tab is hidden, and a station that returns nothing twice stops being
-polled at all. The track is also pushed to the Media Session, so it appears on
-OS media controls and the lock screen.
+The cost is bounded:
 
-Some stations put something other than a song in the title field — a slogan, a
-tracklist URL, or an internal id. Only empty strings and strings with no letters
-at all are filtered; anything else is shown as broadcast rather than guessed at.
+- The ICY scan gives up after 96 KB. In practice a title turns up within
+  15–55 KB.
+- The status endpoint costs a few KB.
+- Polling runs every 25 s and pauses while the window is hidden.
+- A station that returns nothing twice is not polled again.
 
-HLS stations carry track data as in-band ID3 instead, which `hls.js` surfaces
-separately. That is not wired up yet.
+Some stations put something other than a song in the title field: a slogan,
+a tracklist URL or an internal id. Only empty strings and strings with no
+letters at all are filtered out. Anything else is shown as broadcast, rather
+than guessed at.
 
-## Layout
+HLS stations carry track data as ID3 tags inside the stream instead, which
+`hls.js` reports separately. That is not wired up yet.
 
-```
-src/audio/      engine.ts (graph, stages, routing, retry), eq.ts, fx.ts (impulse
-                responses, reverb presets), probe.ts
-src/store/      zustand slices: library, eq, fx, player, table — all persisted
-src/api/        radio-browser.info directory client
-src/components/ library table, equalizer, effects rack, visualizer, player bar, search
-```
+### What was measured, not assumed
 
-## Notes
+These measurements were taken while the project was a browser app. They
+explain why the two-element design exists. 250 of the directory's most-played
+stations were probed with a browser User-Agent:
 
-- Station data comes from [radio-browser.info](https://www.radio-browser.info/),
-  a community directory of ~50,000 stations. Plays are reported back to it so
-  its popularity rankings stay useful.
-- Library, EQ presets, column layout, filters and saved views persist to
-  `localStorage`.
-- Now-playing metadata is read on a separate connection, since nothing about
-  the current track is exposed to the `<audio>` element. See below.
+| | share | consequence in a browser |
+|---|---|---|
+| Served over `https` | 58% | usable on a deployed https site |
+| **`http` only** | **42%** | **blocked as mixed content** |
+| Of the https ones, CORS-enabled | **92%** | equalizer and visualizer work |
+| CORS-refusing | 1% | plays, but no equalizer: the `plainEl` path |
+
+Some servers vary their response by User-Agent. One station refuses `curl`
+outright, but sends `Access-Control-Allow-Origin: *` to a browser. So what a
+station supports is checked at play time, from the app itself, and cached
+for 24 hours rather than permanently.
+
+Tested through the Chrome DevTools Protocol against live servers:
+
+| station | capability | pipeline | analyser |
+|---|---|---|---|
+| CORS-clean MP3 | `full` | graph | signal present |
+| HLS (`.m3u8`) | `full` | graph | signal present |
+| CORS-refusing ×2 | `playback-only` | plain | n/a, still plays |
+| Dead host | `unavailable` | — | error shown |
+
+HLS avoids both problems: `hls.js` gives the element a same-origin
+MediaSource blob, so the equalizer always works on HLS stations.
+
+### Other notes
+
 - `stalled` is not treated as a failure. Chrome fires it whenever no data
-  arrives for ~3 s, which is routine while a live stream connects; reloading on
-  it aborts the in-flight `play()` and kills connections that were about to
-  succeed. A 25 s watchdog handles genuinely stuck stations instead.
+  arrives for about 3 s, which is routine while a live stream connects.
+  Reloading on it cancels the pending `play()` and kills connections that
+  were about to succeed. A 25-second watchdog catches stations that are
+  really stuck.
+- Plays are reported back to radio-browser.info, so its popularity rankings
+  stay useful.
+
+## Project layout
+
+```
+electron/          main process: window, menus, context menus, media:// file
+                   serving and conversion, SQLite library, tag writing
+src/audio/         engine (graph, stages, routing), equalizer, limiter,
+                   loudness, effects, stream probe, now playing
+src/commands/      every user action, defined once: menus, shortcuts and
+                   buttons all run commands by id
+src/store/         zustand stores: station library, local library, play queue,
+                   player, equalizer, effects, levelling, table, interface
+src/components/    station table, library tree and queue, equalizer, effects,
+                   visualizer, player bar, dialogs
+src/api/           radio-browser.info client
+```
+
+## Acknowledgements
+
+Station data comes from [radio-browser.info](https://www.radio-browser.info/),
+a community-maintained directory of internet radio.
