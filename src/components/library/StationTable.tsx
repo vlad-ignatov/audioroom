@@ -4,14 +4,13 @@ import { COLUMNS, useTable } from '@/store/table'
 import { useLibrary } from '@/store/library'
 import { usePlayer } from '@/store/player'
 import { useVisibleStations } from '@/hooks/useVisibleStations'
-import type { Station } from '@/types/station'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { StationRow } from './StationRow'
 import { cn } from '@/lib/utils'
+import { cmd, commandScope, run } from '@/commands'
 
 interface Props {
-  onEditStation: (s: Station) => void
   onBrowseDirectory: () => void
 }
 
@@ -20,7 +19,7 @@ const HEADER_HEIGHT = 36
 /** Height of a station row without a note (min-h-8); rows with notes grow and are measured. */
 const ROW_HEIGHT = 32
 
-export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
+export function StationTable({ onBrowseDirectory }: Props) {
   const rows = useVisibleStations()
   const columns = useTable((s) => s.columns)
   const sort = useTable((s) => s.sort)
@@ -29,8 +28,8 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
   const filters = useTable((s) => s.filters)
   const clearFilters = useTable((s) => s.clearFilters)
 
-  const { toggleFavorite, removeStation, moveStation, stations } = useLibrary()
-  const { selectedId, status, toggle, setQueue } = usePlayer()
+  const { moveStation, stations } = useLibrary()
+  const { selectedId, status, setQueue } = usePlayer()
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const dragId = useRef<string | null>(null)
@@ -118,6 +117,7 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
           the table is wider than the window, so they cannot scroll separately. */}
       <div
         ref={scrollRef}
+        {...commandScope(() => [cmd('station.add'), cmd('stations.browse')])}
         className={cn(
           'overflow-auto scrollbar-thin',
           rows.length === 0 ? 'shrink-0' : 'min-h-0 flex-1',
@@ -163,9 +163,19 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((item) => {
               const station = rows[item.index]!
+              const queue = () => rows.map((r) => r.id)
               return (
                 <div
                   key={station.id}
+                  {...commandScope(() => [
+                    cmd('station.play', { station, queue: queue() }),
+                    cmd('station.favorite', { station }),
+                    '-',
+                    cmd('station.edit', { station }),
+                    cmd('station.copyUrl', { station }),
+                    '-',
+                    cmd('station.remove', { station }),
+                  ])}
                   data-index={item.index}
                   ref={virtualizer.measureElement}
                   style={{
@@ -186,13 +196,10 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
                     isSelected={selectedId === station.id}
                     isPlaying={status === 'playing' || status === 'buffering'}
                     draggable={canDrag}
-                    onPlay={() => {
-                      setQueue(rows.map((r) => r.id))
-                      void toggle(station)
-                    }}
-                    onToggleFavorite={() => toggleFavorite(station.id)}
-                    onEdit={() => onEditStation(station)}
-                    onRemove={() => removeStation(station.id)}
+                    onPlay={() => run('station.play', { station, queue: queue() })}
+                    onToggleFavorite={() => run('station.favorite', { station })}
+                    onEdit={() => run('station.edit', { station })}
+                    onRemove={() => run('station.remove', { station })}
                     onDragStart={() => {
                       dragId.current = station.id
                     }}

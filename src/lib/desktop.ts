@@ -9,22 +9,8 @@ import type { Station } from '@/types/station'
 
 export type MediaKeyAction = 'toggle' | 'next' | 'previous' | 'stop'
 
-export type MenuCommand =
-  | 'toggle'
-  | 'next'
-  | 'previous'
-  | 'volume-up'
-  | 'volume-down'
-  | 'mute'
-  | 'stop'
-  | 'toggle-equalizer'
-  | 'open-directory'
-  | 'add-station'
-  | 'add-files'
-  | 'add-folder'
-  | 'show-shortcuts'
-  | 'view-radio'
-  | 'view-local'
+/** A command id from the renderer's registry (src/commands), sent by the menu bar. */
+export type MenuCommand = string
 
 /** A subfolder in a directory listing. */
 export interface DirFolder {
@@ -113,6 +99,21 @@ export interface LibraryWrite {
   reposition?: { id: string; position: number }[]
 }
 
+/** One line of a context menu, as sent to the main process to draw. */
+export type ContextMenuItem =
+  | { type: 'separator' }
+  | { type: 'role'; role: 'cut' | 'copy' | 'paste' | 'selectAll' | 'undo' | 'redo' }
+  | {
+      type: 'normal' | 'checkbox'
+      /** Handed back when this item is chosen. */
+      id: number
+      label: string
+      enabled: boolean
+      checked?: boolean
+      /** Electron accelerator syntax; shown only. */
+      accelerator?: string
+    }
+
 export interface DesktopBridge {
   isDesktop: true
   platform: NodeJS.Platform
@@ -134,6 +135,9 @@ export interface DesktopBridge {
   ): Promise<ScannedTags[]>
   pickAudioPaths(): Promise<string[]>
   fileEntries(paths: string[]): Promise<LooseFileEntry[]>
+  /** Pop up a context menu at a point in the page; resolves to the chosen id, or null. */
+  showContextMenu(items: ContextMenuItem[], position: { x: number; y: number }): Promise<number | null>
+  revealFile(path: string): Promise<void>
   looseFiles: {
     list(): Promise<string[]>
     add(paths: string[]): Promise<LooseFilesAddResult>

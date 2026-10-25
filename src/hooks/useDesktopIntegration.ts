@@ -1,96 +1,39 @@
 import { useEffect } from 'react'
-import { desktop, type MenuCommand } from '@/lib/desktop'
+import { desktop, type MediaKeyAction } from '@/lib/desktop'
 import { usePlayer } from '@/store/player'
 import { useLocalLibrary } from '@/store/localLibrary'
 import { findPlayable } from '@/lib/playable'
-import { useEq } from '@/store/eq'
+import { getCommand, runRef, type CommandId } from '@/commands/registry'
 
-interface Handlers {
-  onOpenDirectory: () => void
-  onAddStation: () => void
-  onAddFiles: () => void
-  onAddFolder: () => void
-  onShowShortcuts: () => void
-  onShowView: (view: 'radio' | 'local') => void
+const MEDIA_KEYS: Record<MediaKeyAction, CommandId> = {
+  toggle: 'playback.toggle',
+  next: 'playback.next',
+  previous: 'playback.previous',
+  stop: 'playback.stop',
 }
 
 /**
- * Wire the native menu and hardware media keys to the existing stores.
+ * Wire the native menu and hardware media keys to commands.
  *
- * Commands arrive from the main process and are handled here rather than in
- * the components so that they work regardless of what is focused or open.
+ * Both arrive from the main process and run here rather than in a component,
+ * so they work whatever is focused or open.
  */
-export function useDesktopIntegration({
-  onOpenDirectory,
-  onAddStation,
-  onAddFiles,
-  onAddFolder,
-  onShowShortcuts,
-  onShowView,
-}: Handlers): void {
+export function useDesktopIntegration(): void {
   useEffect(() => {
     if (!desktop) return
-
-    const run = (command: MenuCommand) => {
-      const player = usePlayer.getState()
-      switch (command) {
-        case 'toggle':
-          void player.togglePlayback()
-          break
-        case 'next':
-          void player.step(1)
-          break
-        case 'previous':
-          void player.step(-1)
-          break
-        case 'stop':
-          player.stop()
-          break
-        case 'volume-up':
-          player.setVolume(player.volume + 0.05)
-          break
-        case 'volume-down':
-          player.setVolume(player.volume - 0.05)
-          break
-        case 'mute':
-          player.toggleMute()
-          break
-        case 'toggle-equalizer': {
-          const eq = useEq.getState()
-          eq.setPanelOpen(!eq.panelOpen)
-          break
-        }
-        case 'open-directory':
-          onOpenDirectory()
-          break
-        case 'add-station':
-          onAddStation()
-          break
-        case 'add-files':
-          onAddFiles()
-          break
-        case 'add-folder':
-          onAddFolder()
-          break
-        case 'show-shortcuts':
-          onShowShortcuts()
-          break
-        case 'view-radio':
-          onShowView('radio')
-          break
-        case 'view-local':
-          onShowView('local')
-          break
-      }
-    }
-
-    const offMenu = desktop.onMenuCommand(run)
-    const offMedia = desktop.onMediaKey(run)
+    const offMenu = desktop.onMenuCommand((id) => {
+      if (getCommand(id)) runRef({ id: id as CommandId, args: undefined })
+      else console.warn(`[menu] unknown command ${id}`)
+    })
+    const offMedia = desktop.onMediaKey((action) => {
+      const id = MEDIA_KEYS[action]
+      if (id) runRef({ id, args: undefined })
+    })
     return () => {
       offMenu()
       offMedia()
     }
-  }, [onOpenDirectory, onAddStation, onAddFiles, onAddFolder, onShowShortcuts, onShowView])
+  }, [])
 
   // Keep the window title on the current station.
   useEffect(() => {

@@ -9,7 +9,7 @@
 // from the top — and answers with permissive CORS headers so the file can be
 // routed through the Web Audio graph like any radio station.
 
-const { app, protocol, dialog, ipcMain } = require('electron')
+const { app, protocol, dialog, ipcMain, shell } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
@@ -604,6 +604,7 @@ function install(getWindow) {
     const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
     return result.canceled ? [] : result.filePaths
   })
+  ipcMain.handle('reveal-file', async (_event, filePath) => shell.showItemInFolder(await onDisk(filePath)))
   ipcMain.handle('measure-loudness', (_event, fileUrl) => measureLoudness(fileUrl))
   ipcMain.handle('read-tags', (_event, paths) => readTagsBatch(paths))
 }

@@ -84,12 +84,6 @@ export const StationRow = memo(function StationRow({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDoubleClick={onPlay}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onPlay()
-        }
-      }}
       style={{ gridTemplateColumns: template }}
       className={cn(
         'group grid min-h-8 items-center gap-3 border-b py-1 border-line-soft px-3 text-[13px] outline-none',

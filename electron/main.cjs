@@ -10,6 +10,7 @@ const { app, BrowserWindow, session, shell, ipcMain, globalShortcut } = require(
 const path = require('node:path')
 const windowState = require('./window-state.cjs')
 const { buildMenu } = require('./menu.cjs')
+const contextMenu = require('./context-menu.cjs')
 const localFiles = require('./local-files.cjs')
 const libraryDb = require('./library-db.cjs')
 const tagWriter = require('./tag-writer.cjs')
@@ -163,6 +164,7 @@ if (!app.requestSingleInstanceLock()) {
     localFiles.install(() => mainWindow)
     libraryDb.install()
     tagWriter.install()
+    contextMenu.install()
     buildMenu(send)
     createWindow()
 

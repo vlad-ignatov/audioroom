@@ -102,6 +102,16 @@ contextBridge.exposeInMainWorld('desktop', {
     return ipcRenderer.invoke('file-entries', filePaths)
   },
 
+  /** Show a context menu; resolves to the chosen item's id, or null. */
+  showContextMenu(items, position) {
+    return ipcRenderer.invoke('context-menu', items, position)
+  },
+
+  /** Select a file or folder in Finder / the file manager. */
+  revealFile(filePath) {
+    return ipcRenderer.invoke('reveal-file', filePath)
+  },
+
   /** Single files in the local library, beside the root folders. */
   looseFiles: {
     list() {

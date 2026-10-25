@@ -2,7 +2,7 @@
 //
 // Without one, Electron gives a macOS app no Cmd+Q, no Cmd+C in text fields
 // and no window management, so this is load-bearing rather than decoration.
-// Playback items send commands the renderer already knows how to handle.
+// Items send command ids from the renderer's registry (src/commands).
 
 const { app, Menu, shell } = require('electron')
 
@@ -35,22 +35,22 @@ function buildMenu(send) {
         {
           label: 'Add Station…',
           accelerator: 'CmdOrCtrl+N',
-          click: () => send('add-station'),
+          click: () => send('station.add'),
         },
         {
           label: 'Add Files…',
           accelerator: 'CmdOrCtrl+O',
-          click: () => send('add-files'),
+          click: () => send('library.addFiles'),
         },
         {
           label: 'Add Folder…',
           accelerator: 'CmdOrCtrl+Shift+O',
-          click: () => send('add-folder'),
+          click: () => send('library.addFolder'),
         },
         {
           label: 'Browse Stations…',
           accelerator: 'CmdOrCtrl+F',
-          click: () => send('open-directory'),
+          click: () => send('stations.browse'),
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
@@ -84,23 +84,23 @@ function buildMenu(send) {
           // renderer binds Space itself and knows what is focused, so here the
           // item is click-only on macOS and merely advertised elsewhere.
           ...(isMac ? {} : { accelerator: 'Space', registerAccelerator: false }),
-          click: () => send('toggle'),
+          click: () => send('playback.toggle'),
         },
-        { label: 'Next Station', accelerator: 'CmdOrCtrl+Right', click: () => send('next') },
-        { label: 'Previous Station', accelerator: 'CmdOrCtrl+Left', click: () => send('previous') },
+        { label: 'Next Station', accelerator: 'CmdOrCtrl+Right', click: () => send('playback.next') },
+        { label: 'Previous Station', accelerator: 'CmdOrCtrl+Left', click: () => send('playback.previous') },
         { type: 'separator' },
-        { label: 'Volume Up', accelerator: 'CmdOrCtrl+Up', click: () => send('volume-up') },
-        { label: 'Volume Down', accelerator: 'CmdOrCtrl+Down', click: () => send('volume-down') },
-        { label: 'Mute', accelerator: 'CmdOrCtrl+M', click: () => send('mute') },
+        { label: 'Volume Up', accelerator: 'CmdOrCtrl+Up', click: () => send('volume.up') },
+        { label: 'Volume Down', accelerator: 'CmdOrCtrl+Down', click: () => send('volume.down') },
+        { label: 'Mute', accelerator: 'CmdOrCtrl+M', click: () => send('volume.mute') },
       ],
     },
     {
       label: 'View',
       submenu: [
-        { label: 'Internet Radio', accelerator: 'CmdOrCtrl+1', click: () => send('view-radio') },
-        { label: 'Local Library', accelerator: 'CmdOrCtrl+2', click: () => send('view-local') },
+        { label: 'Internet Radio', accelerator: 'CmdOrCtrl+1', click: () => send('view.radio') },
+        { label: 'Local Library', accelerator: 'CmdOrCtrl+2', click: () => send('view.local') },
         { type: 'separator' },
-        { label: 'Equalizer', accelerator: 'CmdOrCtrl+E', click: () => send('toggle-equalizer') },
+        { label: 'Equalizer', accelerator: 'CmdOrCtrl+E', click: () => send('eq.toggle') },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -122,7 +122,7 @@ function buildMenu(send) {
         {
           label: 'Keyboard Shortcuts',
           accelerator: 'CmdOrCtrl+/',
-          click: () => send('show-shortcuts'),
+          click: () => send('shortcuts.show'),
         },
         { type: 'separator' },
         {

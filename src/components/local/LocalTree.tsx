@@ -1,13 +1,15 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { desktop, playableUrl, type DirFile, type TrackTags } from '@/lib/desktop'
-import { trackStation, trackTitle, useLocalLibrary, type Listing } from '@/store/localLibrary'
+import { trackTitle, useLocalLibrary, type Listing } from '@/store/localLibrary'
 import { usePlayer } from '@/store/player'
 import { formatTime } from '@/lib/localFiles'
 import { Icon } from '@/components/ui/Icon'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { tagsLookBroken } from '@/lib/encoding'
+import { cmd, commandScope, run } from '@/commands'
+import { useUi } from '@/store/ui'
 import { TagEditorDialog } from './TagEditorDialog'
 import { EncodingFixDialog } from './EncodingFixDialog'
 import { FolderTagsDialog } from './FolderTagsDialog'
@@ -82,11 +84,14 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
   const listings = useLocalLibrary((s) => s.listings)
   const expanded = useLocalLibrary((s) => s.expanded)
   const tags = useLocalLibrary((s) => s.tags)
-  const { setExpanded, load, requestTags, removeRoot, removeLooseFile, addFolder, addFiles } =
-    useLocalLibrary.getState()
+  const { setExpanded, load, requestTags } = useLocalLibrary.getState()
   const selectedId = usePlayer((s) => s.selectedId)
   const status = usePlayer((s) => s.status)
-  const { setQueue, toggle } = usePlayer.getState()
+  const { setQueue } = usePlayer.getState()
+  const tagEditor = useUi((s) => s.tagEditor)
+  const encodingFix = useUi((s) => s.encodingFix)
+  const folderTags = useUi((s) => s.folderTags)
+  const { setTagEditor, setEncodingFix, setFolderTags } = useUi.getState()
 
   /**
    * Folders known to hold mis-encoded tags, in themselves or below: only these
@@ -114,7 +119,7 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
     () => flatten(roots, looseFiles, listings, expanded),
     [roots, looseFiles, listings, expanded],
   )
-  const removeFile = useCallback((file: DirFile) => void removeLooseFile(file.path), [removeLooseFile])
+  const removeFile = useCallback((file: DirFile) => run('library.removeFile', { path: file.path }), [])
   const trackIds = useMemo(
     () => rows.flatMap((r) => (r.kind === 'file' ? [r.file.url] : [])),
     [rows],
@@ -177,14 +182,32 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
     if (paths.length > 0) requestTags(paths)
   }, [first, last, rows, requestTags])
 
-  const [editing, setEditing] = useState<DirFile | null>(null)
-  const [fixing, setFixing] = useState<string | null>(null)
-  const [bulkEditing, setBulkEditing] = useState<string | null>(null)
-  const editFile = useCallback((file: DirFile) => setEditing(file), [])
+  const editFile = useCallback((file: DirFile) => run('track.editInfo', { file }), [])
+  const playFile = (file: DirFile) => run('track.play', { file, queue: trackIds })
 
-  const playFile = (file: DirFile) => {
-    setQueue(trackIds)
-    void toggle(trackStation(file, useLocalLibrary.getState().tags[file.path]))
+  /** What a right-click (or a key) on a row offers. */
+  const rowCommands = (row: Row) => () => {
+    if (row.kind === 'folder') {
+      const path = row.path
+      return [
+        cmd('folder.editInfo', { path }),
+        needsFix.has(path) && cmd('folder.fixEncoding', { path }),
+        '-' as const,
+        cmd('file.reveal', { path }),
+        row.root && cmd('library.removeFolder', { path }),
+      ]
+    }
+    if (row.kind === 'file') {
+      const { file } = row
+      return [
+        cmd('track.play', { file, queue: trackIds }),
+        '-' as const,
+        cmd('track.editInfo', { file }),
+        cmd('file.reveal', { path: file.path }),
+        row.loose && cmd('library.removeFile', { path: file.path }),
+      ]
+    }
+    return []
   }
 
   if (!desktop) {
@@ -200,11 +223,11 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
         <p className="text-sm text-ink-dim">Add a folder to browse the music in it, or add single files.</p>
         <div className="flex gap-2">
-          <Button variant="accent" onClick={() => void addFolder().then((message) => message && onNotify(message))}>
+          <Button variant="accent" onClick={() => run('library.addFolder')}>
             <Icon name="folderPlus" size={14} />
             Add folder
           </Button>
-          <Button variant="solid" onClick={() => void addFiles().then((message) => message && onNotify(message))}>
+          <Button variant="solid" onClick={() => run('library.addFiles')}>
             <Icon name="filePlus" size={14} />
             Add files
           </Button>
@@ -217,7 +240,12 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} role="treegrid" className="min-h-0 flex-1 overflow-auto scrollbar-thin">
+      <div
+        ref={scrollRef}
+        role="treegrid"
+        className="min-h-0 flex-1 overflow-auto scrollbar-thin"
+        {...commandScope(() => [cmd('library.addFolder'), cmd('library.addFiles'), cmd('library.refresh')])}
+      >
         <div style={{ minWidth: MIN_WIDTH }}>
           <div
             role="row"
@@ -237,6 +265,7 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
               return (
                 <div
                   key={row.key}
+                  {...commandScope(rowCommands(row))}
                   style={{
                     position: 'absolute',
                     top: 0,
@@ -250,9 +279,9 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
                     <FolderRow
                       row={row}
                       onToggle={() => setExpanded(row.path, !row.open)}
-                      onRemove={() => void removeRoot(row.path)}
-                      onFixEncoding={needsFix.has(row.path) ? () => setFixing(row.path) : undefined}
-                      onEditTags={() => setBulkEditing(row.path)}
+                      onRemove={() => run('library.removeFolder', { path: row.path })}
+                      onFixEncoding={needsFix.has(row.path) ? () => run('folder.fixEncoding', { path: row.path }) : undefined}
+                      onEditTags={() => run('folder.editInfo', { path: row.path })}
                     />
                   ) : row.kind === 'file' ? (
                     <FileRow
@@ -290,9 +319,9 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
       </div>
 
 
-      <TagEditorDialog file={editing} onClose={() => setEditing(null)} onNotify={onNotify} />
-      <EncodingFixDialog folder={fixing} onClose={() => setFixing(null)} />
-      <FolderTagsDialog folder={bulkEditing} onClose={() => setBulkEditing(null)} />
+      <TagEditorDialog file={tagEditor} onClose={() => setTagEditor(null)} onNotify={onNotify} />
+      <EncodingFixDialog folder={encodingFix} onClose={() => setEncodingFix(null)} />
+      <FolderTagsDialog folder={folderTags} onClose={() => setFolderTags(null)} />
     </div>
   )
 }
@@ -424,15 +453,6 @@ const FileRow = memo(function FileRow({
       tabIndex={0}
       title={file.name}
       onDoubleClick={() => onPlay(file)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          onPlay(file)
-        } else if (e.key === 'F2') {
-          e.preventDefault()
-          onEdit(file)
-        }
-      }}
       style={{ gridTemplateColumns: TEMPLATE }}
       className={cn(rowBase, isSelected && 'bg-accent/8')}
     >
