@@ -61,7 +61,7 @@ export function Toolbar({
     <div className="flex shrink-0 items-center gap-2 px-3 bg-bg-raised py-2">
       <Button variant="accent" size="sm" onClick={onBrowseDirectory}>
         <Icon name="globe" size={13} />
-        Browse directory
+        Browse stations
       </Button>
       <Button variant="solid" size="sm" onClick={onAddStation}>
         <Icon name="plus" size={13} />

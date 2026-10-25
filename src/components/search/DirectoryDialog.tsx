@@ -56,7 +56,7 @@ export function DirectoryDialog({
         setResults(httpsOnly ? data.filter((s) => s.url.startsWith('https:')) : data)
       } catch {
         if (id !== requestId.current) return
-        setError('Could not reach the station directory. Check your connection and try again.')
+        setError('Could not reach radio-browser.info. Check your connection and try again.')
         setResults([])
       } finally {
         if (id === requestId.current) setLoading(false)
@@ -72,7 +72,7 @@ export function DirectoryDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Station directory"
+      title="Browse stations"
       description="Search radio-browser.info, a community-maintained index of about 50,000 stations."
       className="w-[min(94vw,860px)] h-[80vh]"
       footer={

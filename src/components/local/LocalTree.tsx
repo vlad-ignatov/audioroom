@@ -20,19 +20,19 @@ type Row =
 
 const COLUMNS = [
   { label: 'Name', width: 'minmax(260px, 2.6fr)' },
-  { label: 'Artist', width: 'minmax(120px, 1.2fr)' },
-  { label: 'Album', width: 'minmax(120px, 1.2fr)' },
-  { label: 'Time', width: '56px' },
-  { label: 'Codec', width: '64px' },
-  { label: 'Bitrate', width: '64px' },
+  { label: 'Artist', width: 'minmax(60px, 1.2fr)' },
+  { label: 'Album', width: 'minmax(60px, 1.2fr)' },
+  { label: 'Time', width: '60px' },
+  { label: 'Codec', width: '60px' },
+  { label: 'Bitrate', width: '60px' },
 ]
 const TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
 /** Sum of the column floors, gaps and padding; see StationTable for why. */
-const MIN_WIDTH = 260 + 120 + 120 + 56 + 64 + 64 + 5 * 12 + 24
+const MIN_WIDTH = 260 + 60 + 60 + 60 + 60 + 60 + 5 * 12 + 24
 
 const HEADER_HEIGHT = 36
 const ROW_HEIGHT = 30
-const INDENT = 18
+const INDENT = 24
 
 function baseName(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
@@ -222,7 +222,7 @@ export function LocalTree({ onNotify }: { onNotify: (message: string) => void })
           <div
             role="row"
             style={{ gridTemplateColumns: TEMPLATE }}
-            className="sticky top-0 z-20 grid h-9 items-center gap-3 border-b border-line bg-bg-raised px-3 text-[11px] font-medium uppercase tracking-wide text-ink-faint"
+            className="sticky top-0 z-20 grid h-9 items-center gap-3 border-b border-line-soft bg-bg-raised px-3 text-[11px] font-medium uppercase tracking-wide text-ink-faint"
           >
             {COLUMNS.map((c) => (
               <span key={c.label} className="truncate">
@@ -360,7 +360,7 @@ const FolderRow = memo(function FolderRow({
             }}
             className="rounded px-1.5 py-0.5 text-[11px] text-ink-faint hover:bg-panel hover:text-ink"
           >
-            Edit tags…
+            Edit info…
           </button>
           {onFixEncoding && (
             <button
@@ -436,13 +436,13 @@ const FileRow = memo(function FileRow({
       style={{ gridTemplateColumns: TEMPLATE }}
       className={cn(rowBase, isSelected && 'bg-accent/8')}
     >
-      <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: depth * INDENT }}>
+      <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: depth * INDENT + INDENT }}>
         <button
           type="button"
           aria-label={isPlaying ? `Pause ${title}` : `Play ${title}`}
           onClick={() => onPlay(file)}
           className={cn(
-            'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors',
+            'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors -ms-2',
             isSelected
               ? 'border-bg bg-accent text-bg'
               : 'border-line text-ink-dim opacity-0 group-hover:opacity-100 hover:border-accent hover:text-accent',
@@ -462,8 +462,8 @@ const FileRow = memo(function FileRow({
         </span>
         <button
           type="button"
-          aria-label={`Edit tags of ${title}`}
-          title={broken ? 'Tags look mis-encoded — edit (F2)' : 'Edit tags (F2)'}
+          aria-label={`Edit info of ${title}`}
+          title={broken ? 'Title or artist look mis-encoded — edit (F2)' : 'Edit info (F2)'}
           onClick={() => onEdit(file)}
           className={cn(
             'ml-auto shrink-0 rounded p-1 hover:bg-panel',

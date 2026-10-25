@@ -48,7 +48,7 @@ function buildMenu(send) {
           click: () => send('add-folder'),
         },
         {
-          label: 'Browse Directory…',
+          label: 'Browse Stations…',
           accelerator: 'CmdOrCtrl+F',
           click: () => send('open-directory'),
         },

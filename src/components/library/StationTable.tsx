@@ -127,7 +127,7 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
           <div
             role="row"
             style={{ gridTemplateColumns: template }}
-            className="sticky top-0 z-20 grid h-9 items-center gap-3 border-b border-line bg-bg-raised px-3 text-[11px] font-medium uppercase tracking-wide text-ink-faint"
+            className="sticky top-0 z-20 grid h-9 items-center gap-3 border-b border-line-soft bg-bg-raised px-3 text-[11px] font-medium uppercase tracking-wide text-ink-faint"
           >
         {columns.map((id) => {
           const col = COLUMNS[id]
@@ -230,7 +230,7 @@ export function StationTable({ onEditStation, onBrowseDirectory }: Props) {
           ) : (
             <Button variant="accent" onClick={onBrowseDirectory}>
               <Icon name="search" size={14} />
-              Browse the directory
+              Browse stations
             </Button>
           )}
         </div>

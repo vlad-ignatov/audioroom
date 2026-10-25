@@ -9,7 +9,7 @@ export function LocalToolbar({ onNotify }: { onNotify: (message: string) => void
   if (!desktop) return null
 
   return (
-    <div className="flex pt-1 shrink-0 items-center gap-2 px-2 bg-bg-raised">
+    <div className="flex py-1 shrink-0 items-center gap-2 px-2 bg-bg-raised">
       <Button size="sm" onClick={() => void addFolder().then((message) => message && onNotify(message))}>
         <Icon name="folderPlus" size={16} />
         Add folder

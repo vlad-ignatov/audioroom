@@ -232,9 +232,9 @@ export default function App() {
                 aria-selected={view === tab.id}
                 onClick={() => setView(tab.id)}
                 className={cn(
-                  '-mb-px h-7 rounded-t-md border border-b-0 px-3 text-[12px] transition-colors font-semibold',
+                  '-mb-px h-8 rounded-t-md border border-b-0 px-3 text-[12px] transition-colors font-semibold pb-1',
                   view === tab.id
-                    ? 'border-line bg-bg-raised text-ink'
+                    ? 'border-line bg-bg-raised text-ink bg-gradient-to-b from-line-soft to-bg-raised'
                     : 'border-transparent text-ink-faint hover:text-ink-dim',
                 )}
               >
@@ -311,7 +311,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ['↑ / ↓', 'Volume'],
   ['M', 'Mute'],
   ['E', 'Show or hide the equalizer'],
-  ['B', 'Browse the station directory'],
+  ['B', 'Browse stations'],
   ['0', 'Reset the equalizer to flat'],
   ['/', 'Focus the filter box'],
   ['Ctrl 1 / 2', 'Internet radio / local library'],

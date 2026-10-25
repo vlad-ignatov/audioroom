@@ -80,7 +80,7 @@ export function TagEditorDialog({ file, onClose, onNotify }: Props) {
     <Dialog
       open={file !== null}
       onOpenChange={(open) => !open && onClose()}
-      title="Edit tags"
+      title="Edit info"
       description={file?.name}
       className="w-[min(92vw,520px)]"
       footer={

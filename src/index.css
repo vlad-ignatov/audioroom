@@ -114,5 +114,5 @@
   -webkit-app-region: no-drag;
 }
 :root[data-desktop='darwin'] .app-titlebar {
-  padding-left: 78px;
+  padding-left: 90px;
 }

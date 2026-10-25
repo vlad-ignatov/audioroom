@@ -120,7 +120,7 @@ export function FolderTagsDialog({ folder, onClose }: Props) {
     <Dialog
       open={folder !== null}
       onOpenChange={(open) => !open && stage.name !== 'applying' && onClose()}
-      title={`Edit tags in “${folderName}”`}
+      title={`Edit info of every file in “${folderName}”`}
       description="Sets the ticked fields on every MP3 file. Unticked fields are left as they are."
       className="w-[min(92vw,560px)]"
       footer={
