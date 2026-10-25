@@ -92,13 +92,53 @@ async function writeTags(savedPath, fields) {
   if (!Buffer.isBuffer(next)) throw next instanceof Error ? next : new Error('Could not write the tags.')
 
   const tmp = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.tmp`)
+  const { mode } = await fs.promises.stat(filePath)
+  const hadSidecar = await exists(sidecarOf(filePath))
   try {
     await fs.promises.writeFile(tmp, next)
+    // The rename puts a new file in the old one's place; keep its permissions.
+    await fs.promises.chmod(tmp, mode & 0o7777).catch(() => {})
     await fs.promises.rename(tmp, filePath)
   } catch (err) {
     await fs.promises.rm(tmp, { force: true })
     throw err
+  } finally {
+    await dropSidecars(tmp, hadSidecar ? null : filePath)
   }
+}
+
+/**
+ * The "._name" file macOS keeps beside a file whose extended attributes the
+ * disk cannot store: SMB shares without streams support (a Samba server
+ * without vfs_fruit), FAT and exFAT drives.
+ */
+function sidecarOf(filePath) {
+  return path.join(path.dirname(filePath), `._${path.basename(filePath)}`)
+}
+
+async function exists(filePath) {
+  try {
+    await fs.promises.lstat(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Remove the sidecars a write left behind.
+ *
+ * macOS gives every file an app creates a `com.apple.provenance` attribute,
+ * and the attribute cannot be removed. On a disk that cannot hold attributes
+ * the temporary file therefore gets a sidecar, which the rename carries over:
+ * every edited track gained a "._" twin on a Linux share. Deleting the
+ * sidecar takes the attribute with it and leaves the file alone. A sidecar
+ * the file already had is kept — it may hold Finder tags or a comment.
+ */
+async function dropSidecars(tmp, target) {
+  if (process.platform !== 'darwin') return
+  await fs.promises.rm(sidecarOf(tmp), { force: true }).catch(() => {})
+  if (target) await fs.promises.rm(sidecarOf(target), { force: true }).catch(() => {})
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
