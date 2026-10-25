@@ -96,6 +96,7 @@ npm run dev:app
 | `npm run typecheck` | Type-checks the project |
 | `npm run package` | Builds an installer for the current platform into `release/` |
 | `npm run package:dir` | Builds the app without an installer, for a quick test |
+| `npm run icons` | Regenerates every app icon size from `build/icon.svg` |
 
 ### Optional: ffmpeg
 

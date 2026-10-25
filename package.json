@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "icons": "electron scripts/build-icons.cjs",
     "dev:app": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"electron .\"",
     "electron": "electron .",
     "package": "npm run build && electron-builder",
