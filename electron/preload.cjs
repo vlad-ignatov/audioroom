@@ -61,11 +61,6 @@ contextBridge.exposeInMainWorld('desktop', {
     return ipcRenderer.invoke('pick-directory', title)
   },
 
-  /** Whole-track loudness of a `file://` URL in LUFS, or null. */
-  measureLoudness(fileUrl) {
-    return ipcRenderer.invoke('measure-loudness', fileUrl)
-  },
-
   /** One level of a directory: subfolders and audio files. */
   listDir(dirPath) {
     return ipcRenderer.invoke('list-dir', dirPath)

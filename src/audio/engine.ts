@@ -668,14 +668,14 @@ export class AudioEngine {
       return outcome
     }
 
-    // A file that has been moved or deleted fails inside the media pipeline
-    // with the same error as one that will not decode. Ask first, so the
-    // listener is told which it is.
-    if (this.isFile && !(await fileExists(outcome.url))) {
+    // A file that has been moved or deleted, or could not be converted, fails
+    // inside the media pipeline with the same error as one that will not
+    // decode. Ask first, so the listener is told which it is.
+    const problem = this.isFile ? await fileProblem(outcome.url) : null
+    if (problem) {
       if (gen !== this.generation) return outcome
-      const reason = 'File not found. Was it moved or deleted?'
-      this.patch({ status: 'error', message: reason })
-      return { capability: 'unavailable', url: outcome.url, reason }
+      this.patch({ status: 'error', message: problem })
+      return { capability: 'unavailable', url: outcome.url, reason: problem }
     }
 
     // 'unknown' means the probe timed out rather than being refused; give the
@@ -1441,13 +1441,22 @@ function describeMediaError(err: MediaError | null): string {
   }
 }
 
-/** Whether the main process can find a local file; errs on the side of yes. */
-async function fileExists(url: string): Promise<boolean> {
+/**
+ * Why a local file cannot play, if the main process can tell before trying:
+ * it is missing, or it needed converting and that failed (ffmpeg not
+ * installed, say). Null when it should play; errs on that side.
+ */
+async function fileProblem(url: string): Promise<string | null> {
   try {
     const res = await fetch(playableUrl(url), { method: 'HEAD', cache: 'no-store' })
-    return res.status !== 404
+    if (res.status === 404) return 'File not found. Was it moved or deleted?'
+    if (res.status === 415) {
+      const reason = res.headers.get('X-Unplayable-Reason')
+      return reason ? decodeURIComponent(reason) : 'This file format is not supported.'
+    }
+    return null
   } catch {
-    return true
+    return null
   }
 }
 

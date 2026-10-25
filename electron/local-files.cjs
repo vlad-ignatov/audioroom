@@ -105,8 +105,9 @@ function parseRange(header, size) {
 // renderer never sees the difference: same URL, same seeking, same graph.
 //
 // The converter is CoreAudio's `afconvert` on macOS for Apple formats, and
-// ffmpeg for everything else (it must be installed; most Linux systems have
-// it). Lossless sources become FLAC, so nothing is lost; lossy WMA becomes
+// ffmpeg for everything else. ffmpeg is not bundled: it must be installed
+// (most Linux systems have it), and without it those files cannot play — the
+// listener is told so rather than shown a bare "format not supported". Lossless sources become FLAC, so nothing is lost; lossy WMA becomes
 // Opus at a bitrate above the source's, which is transparent without the
 // fivefold size of decoding it to FLAC.
 
@@ -153,17 +154,44 @@ async function needsTranscode(filePath, stat) {
 /**
  * The path to play for a file: the original, or its cached conversion.
  *
- * Conversion failures fall through to the original so the renderer reports
- * the ordinary "format not supported" rather than something opaque.
+ * A failed conversion falls through to the original, which then fails to
+ * decode in the ordinary way, and `problem` says why, for the renderer to show
+ * in place of the media element's bare "format not supported".
+ *
+ * @returns {Promise<{ path: string, problem?: string }>}
  */
 async function playablePath(filePath, stat) {
-  if (!(await needsTranscode(filePath, stat))) return filePath
+  if (!(await needsTranscode(filePath, stat))) return { path: filePath }
   try {
-    return await transcode(filePath, stat)
+    return { path: await transcode(filePath, stat) }
   } catch (err) {
     console.warn('[local-files] transcode failed for', filePath, err)
-    return filePath
+    const problem = err?.missingTool ? err.message : 'Could not convert this file for playback.'
+    return { path: filePath, problem }
   }
+}
+
+/**
+ * Places ffmpeg is installed outside the PATH an app is given.
+ *
+ * An app opened from the Dock or Finder does not get the shell's PATH, only
+ * /usr/bin:/bin:/usr/sbin:/sbin, so Homebrew's and MacPorts' installs are
+ * invisible through it. Elsewhere the launcher passes the user's PATH on.
+ */
+const FFMPEG_LOCATIONS =
+  process.platform === 'darwin' ? ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/local/bin/ffmpeg'] : []
+
+/** The ffmpeg to run: a known install if there is one, else whatever PATH finds. */
+async function findFfmpeg() {
+  for (const candidate of FFMPEG_LOCATIONS) {
+    try {
+      await fs.promises.access(candidate, fs.constants.X_OK)
+      return candidate
+    } catch {
+      // Not there.
+    }
+  }
+  return 'ffmpeg'
 }
 
 function transcode(filePath, stat) {
@@ -198,7 +226,7 @@ async function conversionFor(filePath) {
   }
 }
 
-function converterArgs(filePath, tmp, conversion) {
+async function converterArgs(filePath, tmp, conversion) {
   if (process.platform === 'darwin' && conversion.ext === '.flac' && path.extname(filePath).toLowerCase() !== '.wma') {
     return ['afconvert', ['-f', 'flac', '-d', 'flac', filePath, tmp]]
   }
@@ -207,7 +235,7 @@ function converterArgs(filePath, tmp, conversion) {
       ? ['-c:a', 'flac', '-f', 'flac']
       : ['-c:a', 'libopus', '-b:a', `${conversion.kbps}k`, '-f', 'ogg']
   // First audio stream only: WMA files often carry the cover as a video stream.
-  return ['ffmpeg', ['-nostdin', '-v', 'error', '-i', filePath, '-map', '0:a:0', ...codec, '-y', tmp]]
+  return [await findFfmpeg(), ['-nostdin', '-v', 'error', '-i', filePath, '-map', '0:a:0', ...codec, '-y', tmp]]
 }
 
 async function doTranscode(filePath, key) {
@@ -225,11 +253,16 @@ async function doTranscode(filePath, key) {
   // truncated file that looks finished.
   const tmp = `${out}.${process.pid}.tmp`
   try {
-    const [tool, args] = converterArgs(filePath, tmp, conversion)
+    const [tool, args] = await converterArgs(filePath, tmp, conversion)
     try {
       await run(tool, args, { maxBuffer: 16 * 1024 * 1024 })
     } catch (err) {
-      if (err?.code === 'ENOENT') throw new Error(`${tool} is not installed; it is needed to play ${path.extname(filePath)} files.`)
+      if (err?.code === 'ENOENT') {
+        const format = path.extname(filePath).slice(1).toUpperCase()
+        const missing = new Error(`Playing ${format} files needs ${path.basename(tool)}, which is not installed.`)
+        missing.missingTool = true
+        throw missing
+      }
       throw err
     }
     await fs.promises.rename(tmp, out)
@@ -238,60 +271,6 @@ async function doTranscode(filePath, key) {
     throw err
   }
   return out
-}
-
-// --------------------------------------------------------------- loudness ---
-//
-// Auto-level was built for radio, where a few seconds from the start of a
-// stream say how loud the station is. A song is not like that: intros are
-// quiet, and levelling by the first seconds boosted tracks that needed
-// cutting, by up to 18 dB. A file is all here, so measure all of it, as
-// ReplayGain does. ffmpeg decodes a typical track in a quarter of a second.
-
-/** Integrated loudness by file version (path, size, mtime), for this session. */
-const loudnessCache = new Map()
-
-/**
- * Whole-track loudness in LUFS, or null if it cannot be measured (no ffmpeg,
- * an undecodable file, silence).
- *
- * Measured on a mono downmix, exactly as the renderer measures streams (see
- * gatedLoudness in src/audio/loudness.ts), so tracks and stations land on the
- * same scale. Capped at 15 minutes so an hour-long mix does not hold up play.
- */
-async function measureLoudness(fileUrl) {
-  let filePath, stat
-  try {
-    filePath = fileURLToPath(fileUrl)
-    stat = await fs.promises.stat(filePath)
-  } catch {
-    return null
-  }
-  const key = cacheKey(filePath, stat)
-  if (loudnessCache.has(key)) return loudnessCache.get(key)
-  let lufs = null
-  try {
-    const { stderr } = await run(
-      'ffmpeg',
-      [
-        '-nostdin', '-hide_banner', '-nostats',
-        '-t', '900', '-i', filePath,
-        '-map', '0:a:0',
-        '-af', 'aformat=channel_layouts=stereo,pan=mono|c0=0.5*c0+0.5*c1,ebur128=framelog=quiet',
-        '-f', 'null', '-',
-      ],
-      { maxBuffer: 4 * 1024 * 1024 },
-    )
-    // The summary's integrated figure: "I:  -12.1 LUFS".
-    const match = /\bI:\s+(-?[\d.]+) LUFS/.exec(stderr)
-    const value = match ? Number(match[1]) : NaN
-    // -70 is the absolute gate: nothing audible was found.
-    if (Number.isFinite(value) && value > -70) lufs = value
-  } catch (err) {
-    if (err?.code !== 'ENOENT') console.warn('[local-files] loudness failed for', filePath, err.message)
-  }
-  loudnessCache.set(key, lufs)
-  return lufs
 }
 
 // ---------------------------------------------------------------- serving ---
@@ -306,13 +285,15 @@ async function serve(request) {
   }
 
   let stat
+  let problem
   try {
     stat = await fs.promises.stat(filePath)
     if (!stat.isFile()) throw new Error('not a file')
     const source = await playablePath(filePath, stat)
-    if (source !== filePath) {
-      filePath = source
-      stat = await fs.promises.stat(source)
+    problem = source.problem
+    if (source.path !== filePath) {
+      filePath = source.path
+      stat = await fs.promises.stat(source.path)
     }
   } catch {
     return new Response('Not found', { status: 404 })
@@ -327,8 +308,19 @@ async function serve(request) {
   }
 
   // The renderer asks HEAD before playing, to tell a missing file from one
-  // that will not decode.
+  // that will not decode, and one that could not be converted from both.
   if (request.method === 'HEAD') {
+    if (problem) {
+      return new Response(null, {
+        status: 415,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'X-Unplayable-Reason',
+          // Header values are Latin-1 only; the reason is plain text.
+          'X-Unplayable-Reason': encodeURIComponent(problem),
+        },
+      })
+    }
     return new Response(null, { status: 200, headers: { ...headers, 'Content-Length': String(stat.size) } })
   }
 
@@ -689,7 +681,6 @@ function install(getWindow) {
     return result.canceled ? [] : result.filePaths
   })
   ipcMain.handle('reveal-file', async (_event, filePath) => shell.showItemInFolder(await onDisk(filePath)))
-  ipcMain.handle('measure-loudness', (_event, fileUrl) => measureLoudness(fileUrl))
   ipcMain.handle('read-tags', (_event, paths) => readTagsBatch(paths))
 }
 

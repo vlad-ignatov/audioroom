@@ -127,7 +127,6 @@ export interface DesktopBridge {
   pickFolder(title: string): Promise<string | null>
   pickDirectory(title: string): Promise<string | null>
   listDir(path: string): Promise<DirListing>
-  measureLoudness(fileUrl: string): Promise<number | null>
   readTags(paths: string[]): Promise<TrackTags[]>
   writeTags(path: string, fields: TagEdit): Promise<void>
   scanTags(
