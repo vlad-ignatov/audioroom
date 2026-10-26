@@ -96,6 +96,7 @@ building installers.
   releasing, project layout.
 - [How it works](docs/how-it-works.md): the audio engine, the signal chain,
   loudness leveling, now-playing detection, and the measurements behind them.
+- [Changelog](CHANGELOG.md): what changed in each version.
 - [Roadmap](ROADMAP.md): what's planned, and where help is most welcome.
 
 ## Contributing

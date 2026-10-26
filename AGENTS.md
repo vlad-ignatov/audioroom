@@ -82,11 +82,16 @@ first whether this machine can build that package.
 
 ## Releases
 
+A change users would notice gets an entry under **Unreleased** in
+CHANGELOG.md, in the same commit: what changed for them, not how.
+
 `.github/workflows/release.yml` builds all three packages, each on its
-own OS. To release, bump `version` in `package.json`, commit, and push a
-matching tag (`v0.2.0`). The workflow then makes a draft release with
-the packages and `.github/release-notes.md` at the top; the maintainer
-publishes it. Running the workflow by hand only builds the packages.
+own OS. To release, move the Unreleased entries under the new version,
+bump `version` in `package.json`, commit, and push a matching tag
+(`v0.2.0`). The workflow makes a draft release from the version's
+changelog section and `.github/release-notes.md`, and refuses a version
+the changelog says nothing about; the maintainer publishes it. Running
+the workflow by hand only builds the packages.
 
 ## Testing in the running app
 

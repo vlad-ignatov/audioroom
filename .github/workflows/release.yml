@@ -1,7 +1,8 @@
 # Build the macOS, Windows and Linux packages, each on its own OS.
 #
 # Pushing a tag like v0.2.0 also creates a draft GitHub release with the
-# packages attached; review the notes and publish it by hand. Running the
+# packages attached, and the version's CHANGELOG.md entries above the
+# download instructions; review it and publish it by hand. Running the
 # workflow by hand (Actions → Release → Run workflow) only builds, and the
 # packages are left as downloadable artifacts of the run.
 
@@ -49,6 +50,8 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match the version in package.json ($version)."
             exit 1
           fi
+          # Fails, before anything is built, when CHANGELOG.md says nothing about this version.
+          node scripts/release-notes.cjs "$version" > /dev/null
 
       - run: npm ci
       - run: npm test
@@ -82,6 +85,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          node scripts/release-notes.cjs "$GITHUB_REF_NAME" > notes.md
           gh release create "$GITHUB_REF_NAME" packages/* \
-            --draft --generate-notes --title "AudioRoom ${GITHUB_REF_NAME#v}" \
-            --notes-file .github/release-notes.md
+            --draft --title "AudioRoom ${GITHUB_REF_NAME#v}" --notes-file notes.md

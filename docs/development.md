@@ -86,10 +86,22 @@ the Windows installer and the AppImage are Intel programs.
 The Release workflow (`.github/workflows/release.yml`) builds all three
 packages, each on its own system.
 
-1. Bump `version` in `package.json` and commit.
-2. Push a matching tag: `git tag v0.2.0 && git push origin v0.2.0`.
-3. The workflow creates a draft release with the packages attached and
-   `.github/release-notes.md` at the top. Review it and publish.
+Every change users would notice gets an entry under **Unreleased** in
+[CHANGELOG.md](../CHANGELOG.md) as it is made. To release:
+
+1. In CHANGELOG.md, rename `## [Unreleased]` to the new version and date
+   (`## [0.2.0] - 2026-12-01`), start a new empty Unreleased section above
+   it, and update the links at the bottom.
+2. Bump `version` in `package.json` to match, and commit. The tests check
+   that the changelog has a section for that version.
+3. Push a matching tag: `git tag v0.2.0 && git push origin v0.2.0`.
+4. The workflow creates a draft release with the packages attached: the
+   version's changelog entries, a link to the code changes since the
+   previous version, and the download instructions from
+   `.github/release-notes.md`. Review it and publish.
+
+`node scripts/release-notes.cjs 0.2.0` prints those notes, to check them
+before tagging.
 
 Running the workflow by hand (Actions → Release → Run workflow, on `main`)
 only builds the packages, and leaves them as downloads on the run's page.
