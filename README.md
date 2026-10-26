@@ -94,9 +94,26 @@ npm run dev:app
 | `npm run dev:app` | Runs the app with hot reload (Vite dev server plus Electron) |
 | `npm run dev` | Runs the interface in a browser only. Radio works; the local library needs the desktop app. |
 | `npm run typecheck` | Type-checks the project |
-| `npm run package` | Builds an installer for the current platform into `release/` |
+| `npm run package` | Builds the package for the platform you are on, into `release/` |
+| `npm run package:mac` | Builds the macOS `.dmg` files (Apple Silicon and Intel) |
+| `npm run package:win` | Builds the Windows installer (x64) |
+| `npm run package:linux` | Builds the Linux AppImage (x64) |
 | `npm run package:dir` | Builds the app without an installer, for a quick test |
 | `npm run icons` | Regenerates every app icon size from `build/icon.svg` |
+
+### Which packages you can build where
+
+| Package | on macOS | on Linux | on Windows |
+|---|---|---|---|
+| macOS | ✓ | — | — |
+| Windows | ✓ (Apple Silicon: needs Rosetta 2) | ✓ | ✓ |
+| Linux | ✓ (Apple Silicon: needs Rosetta 2) | ✓ | — |
+
+The `package:*` commands check this first and stop with an explanation
+instead of failing partway through the build. On an Apple Silicon Mac,
+install Rosetta 2 once with
+`softwareupdate --install-rosetta --agree-to-license`: the tools that build
+the Windows installer and the AppImage are Intel programs.
 
 ### Optional: ffmpeg
 
