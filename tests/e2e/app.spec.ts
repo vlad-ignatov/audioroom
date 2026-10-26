@@ -80,11 +80,12 @@ test('plays a track from the local library', async () => {
 
   app = await launch(dataDir)
   const { page } = app
-  const folder = page.locator(`[role="row"][title="${music}"]`)
+  // By title, not a CSS selector: Windows paths are full of backslashes.
+  const folder = page.getByRole('row').and(page.getByTitle(music, { exact: true }))
   await folder.click()
   await expect(folder).toHaveAttribute('aria-expanded', 'true')
 
-  await page.locator('[role="row"][title="Test Tone.wav"]').dblclick()
+  await page.getByRole('row').and(page.getByTitle('Test Tone.wav', { exact: true })).dblclick()
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
   // The position moves: the file is actually decoding and playing.
   const position = page.locator('[aria-label="Position"]').first()

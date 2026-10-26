@@ -11,5 +11,6 @@ export default defineConfig({
   test: {
     include: ['tests/unit/**/*.test.ts', 'tests/main/**/*.test.ts'],
     environment: 'node',
+    globalSetup: ['tests/electron-download.ts'],
   },
 })
