@@ -13,7 +13,10 @@ test.beforeEach(() => {
   dataDir = tempDir('e2e')
 })
 
-test.afterEach(async () => {
+test.afterEach(async ({}, testInfo) => {
+  if (app && testInfo.status !== testInfo.expectedStatus) {
+    await testInfo.attach('console', { body: app.console.join('\n'), contentType: 'text/plain' })
+  }
   await app?.electron.close()
   app = undefined
   fs.rmSync(dataDir, { recursive: true, force: true })

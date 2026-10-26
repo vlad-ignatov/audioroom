@@ -10,6 +10,8 @@ export interface App {
   page: Page
   /** Uncaught errors in the interface; a test fails if any appear. */
   errors: Error[]
+  /** Everything the interface logged, attached to a failed test's report. */
+  console: string[]
 }
 
 /** A fresh, empty data folder, removed by the caller. */
@@ -30,9 +32,14 @@ export async function launch(dataDir: string): Promise<App> {
   const app = await electron.launch({ args: [ROOT], cwd: ROOT, env })
   const page = await app.firstWindow()
   const errors: Error[] = []
+  const console: string[] = []
   page.on('pageerror', (err) => errors.push(err))
+  page.on('console', (msg) => console.push(`[${msg.type()}] ${msg.text()}`))
+  // The main process's output, which Playwright otherwise discards.
+  app.process().stdout?.on('data', (d: Buffer) => console.push(`[main] ${d.toString().trimEnd()}`))
+  app.process().stderr?.on('data', (d: Buffer) => console.push(`[main:err] ${d.toString().trimEnd()}`))
   await page.waitForLoadState('domcontentloaded')
-  return { electron: app, page, errors }
+  return { electron: app, page, errors, console }
 }
 
 /** A mono 16-bit WAV of a quiet sine, `seconds` long. */
