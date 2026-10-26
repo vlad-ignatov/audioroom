@@ -16,7 +16,9 @@ launch needs one extra step:
 - **Windows:** in the SmartScreen message, click **More info**, then
   **Run anyway**.
 - **Linux:** `chmod +x` the AppImage and run it. Ubuntu 22.04 and newer
-  need `libfuse2` (`libfuse2t64` on 24.04).
+  need `libfuse2` (`libfuse2t64` on 24.04). To add it to the applications
+  menu with its icon, see
+  [the README](https://github.com/vlad-ignatov/audioroom#linux-adding-audioroom-to-the-applications-menu).
 
 WMA files, and ALAC and AIFF outside macOS, need
 [ffmpeg](https://github.com/vlad-ignatov/audioroom#optional-ffmpeg).

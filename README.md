@@ -99,6 +99,37 @@ system warns you the first time:
   and run it. On Ubuntu 22.04 and newer, AppImages need `libfuse2`
   (`libfuse2t64` on 24.04).
 
+### Linux: adding AudioRoom to the applications menu
+
+An AppImage carries its icon and menu entry inside, where file managers and
+menu editors don't look. [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever)
+and AppImageLauncher add both to the menu for you. To do it by hand, set
+`APPIMAGE` to where you keep the file and run:
+
+```bash
+APPIMAGE=~/Applications/AudioRoom-0.1.0-linux-x86_64.AppImage
+
+cd "$(mktemp -d)"
+"$APPIMAGE" --appimage-extract 'usr/share/icons/hicolor/512x512/apps/audioroom.png'
+install -D squashfs-root/usr/share/icons/hicolor/512x512/apps/audioroom.png \
+  ~/.local/share/icons/hicolor/512x512/apps/audioroom.png
+
+cat > ~/.local/share/applications/audioroom.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=AudioRoom
+Comment=Internet radio and music player
+Exec="$APPIMAGE" %U
+Icon=audioroom
+StartupWMClass=audioroom
+Categories=AudioVideo;
+EOF
+```
+
+Keep the file name `audioroom.desktop` and the `StartupWMClass` line: they
+tie the running window to the menu entry, so the dock doesn't show it as a
+second, unknown app.
+
 ## Building from source
 
 You need:
