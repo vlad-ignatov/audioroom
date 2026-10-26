@@ -1,0 +1,44 @@
+name: Windows report
+description: Tell us how AudioRoom runs on Windows, even if everything works.
+title: "Windows report: "
+labels: [windows]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No one on the project has used AudioRoom on Windows yet, so any report is useful. Check what you tried and say what didn't work. For a specific problem, a separate [bug report](?template=bug_report.yml) is easier to follow up.
+  - type: input
+    id: version
+    attributes:
+      label: AudioRoom version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked
+      options:
+        - label: Installing and starting the app
+        - label: "Radio: searching and playing stations"
+        - label: The equalizer and the visualizer
+        - label: "Local files: adding folders, playing, seeking"
+        - label: Editing MP3 tags
+        - label: Media keys, and the window title following the track
+        - label: WMA and ALAC files (with ffmpeg installed)
+  - type: textarea
+    id: problems
+    attributes:
+      label: What didn't work
+      description: Anything that failed, looked wrong or felt off.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else

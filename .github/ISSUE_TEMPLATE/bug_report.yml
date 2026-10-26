@@ -1,0 +1,66 @@
+name: Bug report
+description: Something doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A problem we can reproduce is a problem we can fix, so the details below help a lot.
+  - type: input
+    id: version
+    attributes:
+      label: AudioRoom version
+      description: The release you installed (AudioRoom → About AudioRoom on macOS), or the commit if you built it yourself.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - macOS, Apple Silicon
+        - macOS, Intel
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: System version
+      placeholder: "macOS 15.4, Windows 11 24H2, Ubuntu 24.04 (GNOME, Wayland)…"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it happens
+      options:
+        - Internet radio
+        - Local library
+        - Sound (equalizer, effects, leveling)
+        - Installing or starting the app
+        - Something else
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead. Screenshots are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps, from starting the app. For a radio problem, the station's name or stream URL; for a local file, its format.
+      placeholder: |
+        1. Search for "…"
+        2. Play the first result
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages
+      description: Anything the app showed, or printed when started from a terminal.
+      render: text
