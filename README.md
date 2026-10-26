@@ -6,7 +6,7 @@
 
 <p align="center">
   A desktop player for internet radio and your own music files, with a 10-band
-  equalizer, loudness levelling, room effects and a live spectrum visualizer.
+  equalizer, loudness leveling, room effects and a live spectrum visualizer.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 - Search about 50,000 stations from [radio-browser.info](https://www.radio-browser.info/)
   and add them to your library. HLS streams are supported.
 - A sortable, filterable station table, with columns you can reorder,
-  favourites and saved views.
+  favorites and saved views.
 - The current artist and title, where the station broadcasts them. They are
   shown in the window title and in the OS media controls.
 - Import M3U and PLS playlists. Back up the whole library and sound setup
@@ -44,7 +44,7 @@
 - A 10-band equalizer with built-in presets, and your own.
 - A multiband limiter stops equalizer boosts from clipping without turning
   down the whole mix. The visualizer turns red where it is working.
-- Loudness levelling (ITU-R BS.1770) brings stations and tracks to a similar
+- Loudness leveling (ITU-R BS.1770) brings stations and tracks to a similar
   volume.
 - Reverb with five synthesised rooms, and a stereo width control.
 
@@ -104,9 +104,9 @@ npm run dev:app
 
 | Package | on macOS | on Linux | on Windows |
 |---|---|---|---|
-| macOS | ✓ | — | — |
+| macOS | ✓ | ✗ | ✗ |
 | Windows | ✓ (Apple Silicon: needs Rosetta 2) | ✓ | ✓ |
-| Linux | ✓ (Apple Silicon: needs Rosetta 2) | ✓ | — |
+| Linux | ✓ (Apple Silicon: needs Rosetta 2) | ✓ | ✗ |
 
 `package:mac`, `package:win` and `package:linux` check this first and stop
 with an explanation instead of failing partway through the build. On an Apple Silicon Mac,
@@ -145,7 +145,7 @@ database, `library.sqlite`, in the app's data folder:
 | Linux | `~/.config/AudioRoom` |
 | Windows | `%APPDATA%\AudioRoom` |
 
-Equalizer, effects, levelling and table settings are kept in the same folder,
+Equalizer, effects, leveling and table settings are kept in the same folder,
 in Chromium's local storage. Your music files are only read, except when you
 edit their tags. ALAC, AIFF, CAF and WMA conversions are cached in
 `transcoded/` inside the same folder.
@@ -186,11 +186,11 @@ the probe stay because they cost nothing and still catch dead hosts.
 flowchart TD
     G["graphEl<br/>routed through Web Audio"] --> S[source]
     S -. measured by .-> M[loudness meter]
-    S --> L["level gain<br/>(loudness levelling)"]
+    S --> L["level gain<br/>(loudness leveling)"]
     L --> P[preamp]
     P --> FX["EQ → Reverb → Width<br/>(each can be bypassed)"]
     FX --> LIM[multiband limiter]
-    LIM -. read by .-> A["analyser<br/>(visualizer)"]
+    LIM -. read by .-> A["analyzer<br/>(visualizer)"]
     LIM --> V[volume]
     V --> SP([speakers])
     PE["plainEl<br/>never touches Web Audio"] --> SP
@@ -203,12 +203,12 @@ preamp or at a stage's output, so disconnecting exactly those leaves each
 stage's internal wiring intact.
 
 The visualizer reads the end of the chain, before the volume control. It shows
-the station as levelled, equalised and limited, and does not shrink when you
+the station as leveled, equalized and limited, and does not shrink when you
 turn the volume down.
 
 ### Equalizer and limiter
 
-Bands sit at the ISO octave centres (31 Hz to 16 kHz), Q ≈ 1.414 for one-octave
+Bands sit at the ISO octave centers (31 Hz to 16 kHz), Q ≈ 1.414 for one-octave
 bandwidth, ±12 dB. Band 0 is a low shelf and band 9 a high shelf, so the
 extremes move real energy.
 
@@ -221,7 +221,7 @@ clipper. A bass hit that would clip pulls down only the bass. The crossovers
 sum back to a flat response, so the stage changes nothing audible until it has
 to act. The built-in presets lower the preamp so their boosts have room.
 
-### Loudness levelling
+### Loudness leveling
 
 Loudness follows ITU-R BS.1770: K-weighting, 400 ms blocks and two-stage gating.
 
@@ -310,7 +310,7 @@ Measured across the starter library:
 | WALM Vinyl HD | status | title |
 | Damar Türk FM | status | artist and title |
 | Dance Wave! | status | a station slogan, not a track |
-| Aardvark Blues FM | — | nothing available |
+| Aardvark Blues FM | none | nothing available |
 
 Roughly half of stations expose a usable track. Aardvark is the instructive
 case: `curl` *can* read its ICY metadata, but a browser cannot, because the
@@ -352,12 +352,12 @@ for 24 hours rather than permanently.
 
 Tested through the Chrome DevTools Protocol against live servers:
 
-| station | capability | pipeline | analyser |
+| station | capability | pipeline | analyzer |
 |---|---|---|---|
 | CORS-clean MP3 | `full` | graph | signal present |
 | HLS (`.m3u8`) | `full` | graph | signal present |
 | CORS-refusing ×2 | `playback-only` | plain | n/a, still plays |
-| Dead host | `unavailable` | — | error shown |
+| Dead host | `unavailable` | none | error shown |
 
 HLS avoids both problems: `hls.js` gives the element a same-origin
 MediaSource blob, so the equalizer always works on HLS stations.
@@ -385,7 +385,7 @@ src/commands/    every user action, defined once: menus,
                  shortcuts and buttons all run commands by id
 src/store/       zustand stores: station library, local library,
                  play queue, player, equalizer, effects,
-                 levelling, table, interface
+                 leveling, table, interface
 src/components/  station table, library tree and queue,
                  equalizer, effects, visualizer, player bar,
                  dialogs
@@ -396,6 +396,11 @@ src/api/         radio-browser.info client
 
 Station data comes from [radio-browser.info](https://www.radio-browser.info/),
 a community-maintained directory of internet radio.
+
+## Contributing
+
+Contributions are welcome. [ROADMAP.md](ROADMAP.md) lists what's planned and
+where help is most needed; testing on Windows is the most useful start.
 
 ## License
 
