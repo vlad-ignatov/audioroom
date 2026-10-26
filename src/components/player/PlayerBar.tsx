@@ -119,7 +119,7 @@ export function PlayerBar({
                   {nowPlaying.artist ? (
                     <>
                       <span className="text-ink">{nowPlaying.artist}</span>
-                      {' — '}
+                      {' – '}
                       <span className="text-ink-dim">{nowPlaying.title}</span>
                     </>
                   ) : (

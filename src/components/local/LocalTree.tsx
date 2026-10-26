@@ -486,14 +486,14 @@ const FileRow = memo(function FileRow({
             isSelected ? 'text-accent' : tags && !tags.title ? 'text-ink-dim' : 'text-ink',
             tags && !tags.title && 'italic',
           )}
-          title={tags && !tags.title ? 'No title tag — showing the file name' : undefined}
+          title={tags && !tags.title ? 'No title tag, showing the file name' : undefined}
         >
           {title}
         </span>
         <button
           type="button"
           aria-label={`Edit info of ${title}`}
-          title={broken ? 'Title or artist look mis-encoded — edit (F2)' : 'Edit info (F2)'}
+          title={broken ? 'Title or artist look mis-encoded. Edit info (F2)' : 'Edit info (F2)'}
           onClick={() => onEdit(file)}
           className={cn(
             'ml-auto shrink-0 rounded p-1 hover:bg-panel',

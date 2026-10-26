@@ -204,7 +204,7 @@ if (!app.requestSingleInstanceLock()) {
 // The renderer reports what is playing so the window title can follow it.
 ipcMain.on('now-playing', (_event, text) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.setTitle(text ? `${text} — AudioRoom` : 'AudioRoom')
+  mainWindow.setTitle(text ? `${text} – AudioRoom` : 'AudioRoom')
 })
 
 app.on('will-quit', () => {

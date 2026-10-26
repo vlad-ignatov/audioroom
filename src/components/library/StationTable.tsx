@@ -251,7 +251,7 @@ export function StationTable({ onBrowseDirectory }: Props) {
         {!canDrag && manualOrder && <span>Clear filters to reorder</span>}
         {sort.length > 0 && (
           <button type="button" onClick={useTable.getState().clearSort} className="hover:text-ink-dim">
-            Sorted by {sort.map((s) => COLUMNS[s.id].label || 'favourite').join(', ')} — clear
+            Sorted by {sort.map((s) => COLUMNS[s.id].label || 'favorite').join(', ')}. Click to clear
           </button>
         )}
       </footer>

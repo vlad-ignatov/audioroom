@@ -38,21 +38,21 @@ function Cell({ id, station }: { id: ColumnId; station: Station }) {
         </div>
       )
     case 'country':
-      return <span className="truncate text-ink-dim">{station.country ?? '—'}</span>
+      return <span className="truncate text-ink-dim">{station.country ?? '–'}</span>
     case 'language':
-      return <span className="truncate capitalize text-ink-dim">{station.language ?? '—'}</span>
+      return <span className="truncate capitalize text-ink-dim">{station.language ?? '–'}</span>
     case 'codec':
-      return <span className="font-mono text-[11px] text-ink-dim">{station.codec ?? '—'}</span>
+      return <span className="font-mono text-[11px] text-ink-dim">{station.codec ?? '–'}</span>
     case 'bitrate':
       return (
         <span className="tabular-nums text-ink-dim">
-          {station.bitrate ? `${station.bitrate}k` : '—'}
+          {station.bitrate ? `${station.bitrate}k` : '–'}
         </span>
       )
     case 'votes':
-      return <span className="tabular-nums text-ink-dim">{station.votes ?? '—'}</span>
+      return <span className="tabular-nums text-ink-dim">{station.votes ?? '–'}</span>
     case 'playCount':
-      return <span className="tabular-nums text-ink-dim">{station.playCount || '—'}</span>
+      return <span className="tabular-nums text-ink-dim">{station.playCount || '–'}</span>
     case 'lastPlayedAt':
       return <span className="truncate text-ink-faint">{formatRelative(station.lastPlayedAt)}</span>
     default:
@@ -98,7 +98,7 @@ export const StationRow = memo(function StationRow({
             <button
               key={id}
               type="button"
-              aria-label={station.favorite ? 'Remove from favourites' : 'Add to favourites'}
+              aria-label={station.favorite ? 'Remove from favorites' : 'Add to favorites'}
               aria-pressed={station.favorite}
               onClick={(e) => {
                 e.stopPropagation()

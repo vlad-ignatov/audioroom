@@ -102,7 +102,7 @@ export function StationDialog({ open, onOpenChange, station, onNotify }: Props) 
       open={open}
       onOpenChange={onOpenChange}
       title={station ? 'Edit station' : 'Add a station'}
-      description="Paste a direct stream URL — an Icecast/Shoutcast endpoint or an .m3u8 playlist."
+      description="Paste a direct stream URL: an Icecast/Shoutcast endpoint or an .m3u8 playlist."
       className="w-[min(92vw,520px)]"
       footer={
         <>
@@ -187,13 +187,13 @@ export function StationDialog({ open, onOpenChange, station, onNotify }: Props) 
         </label>
 
         <div className="flex flex-col gap-1.5">
-          <span className={label}>Colour</span>
+          <span className={label}>Color</span>
           <div className="flex gap-1.5">
             {SWATCHES.map((c) => (
               <button
                 key={c}
                 type="button"
-                aria-label={c === 'transparent' ? 'No colour' : `Colour ${c}`}
+                aria-label={c === 'transparent' ? 'No color' : `Color ${c}`}
                 onClick={() => setForm({ ...form, color: c })}
                 style={{ background: c === 'transparent' ? undefined : c }}
                 className={

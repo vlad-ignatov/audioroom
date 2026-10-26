@@ -33,7 +33,7 @@ defineCommands({
     },
   },
   'station.favorite': {
-    label: 'Favourite',
+    label: 'Favorite',
     checked: ({ station }) => current(station).favorite,
     run: ({ station }) => useLibrary.getState().toggleFavorite(station.id),
   },

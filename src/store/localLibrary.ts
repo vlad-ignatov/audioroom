@@ -305,7 +305,7 @@ export function trackStation(file: DirFile, tags?: TrackTags): Station {
   const title = trackTitle(file, tags)
   const station: Station = {
     id: file.url,
-    name: tags?.artist && tags.title ? `${tags.artist} — ${title}` : title,
+    name: tags?.artist && tags.title ? `${tags.artist} – ${title}` : title,
     url: file.url,
     codec: tags?.codec,
     bitrate: tags?.bitrate,

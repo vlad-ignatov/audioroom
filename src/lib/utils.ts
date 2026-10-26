@@ -11,11 +11,11 @@ export function clamp(v: number, lo: number, hi: number): number {
 }
 
 export function formatBitrate(kbps?: number): string {
-  return kbps ? `${kbps} kbps` : '—'
+  return kbps ? `${kbps} kbps` : '–'
 }
 
 export function formatRelative(ts?: number): string {
-  if (!ts) return '—'
+  if (!ts) return '–'
   const diff = Date.now() - ts
   const mins = Math.round(diff / 60000)
   if (mins < 1) return 'just now'

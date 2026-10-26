@@ -171,7 +171,7 @@ export function FolderTagsDialog({ folder, onClose }: Props) {
                 <ul className="flex flex-col gap-1 text-[12px] text-ink-dim">
                   {stage.failed.map((f) => (
                     <li key={f.name}>
-                      {f.name} — <span className="text-ink-faint">{f.message}</span>
+                      {f.name}: <span className="text-ink-faint">{f.message}</span>
                     </li>
                   ))}
                 </ul>
@@ -182,7 +182,7 @@ export function FolderTagsDialog({ folder, onClose }: Props) {
 
         {stage.name === 'edit' && files.length === 0 && (
           <p className="text-[13px] text-ink-dim">
-            No MP3 files here{recursive ? '' : ' — try including subfolders'}.
+            No MP3 files here.{recursive ? '' : ' Try including subfolders.'}
           </p>
         )}
 
@@ -212,7 +212,7 @@ export function FolderTagsDialog({ folder, onClose }: Props) {
                   Now:{' '}
                   {summary.length === 1
                     ? summary[0]!.value || 'not set'
-                    : `${summary.length} different values — ${summary
+                    : `${summary.length} different values: ${summary
                         .slice(0, 3)
                         .map((s) => `${s.value || 'not set'} (${s.count})`)
                         .join(', ')}${summary.length > 3 ? ', …' : ''}`}

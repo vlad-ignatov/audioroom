@@ -183,7 +183,7 @@ export function SpacePanel() {
                 ? `${loudness.toFixed(1)} LUFS  ${levelGainDb >= 0 ? '+' : ''}${levelGainDb.toFixed(1)} dB`
                 : // Only claim to be measuring while there is audio to measure.
                   status === 'idle' || status === 'error' || inert
-                  ? '—'
+                  ? '–'
                   : 'measuring…'}
           </span>
         </div>

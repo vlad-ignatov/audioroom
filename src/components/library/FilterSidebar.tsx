@@ -98,7 +98,7 @@ export function FilterSidebar() {
           )}
         >
           <Icon name="star" size={14} />
-          Favourites only
+          Favorites only
         </button>
       </div>
 

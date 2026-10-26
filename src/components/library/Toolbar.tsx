@@ -93,7 +93,7 @@ export function Toolbar({
                       <span className="flex h-3.5 w-3.5 items-center justify-center">
                         {visible && <Icon name="check" size={12} className="text-accent" />}
                       </span>
-                      {COLUMNS[id].label || 'Favourite'}
+                      {COLUMNS[id].label || 'Favorite'}
                     </DropdownMenu.CheckboxItem>
                     {visible && (
                       <span className="flex shrink-0 pr-1">

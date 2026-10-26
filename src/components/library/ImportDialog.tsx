@@ -121,7 +121,7 @@ export function ImportDialog({ backup, onClose, onNotify }: Props) {
             checked={mode === 'merge'}
             onSelect={() => setMode('merge')}
             title="Merge into my library"
-            detail="Adds new stations and updates ones you already have. Favourites, notes and names from the file win; play counts and history combine."
+            detail="Adds new stations and updates ones you already have. Favorites, notes and names from the file win; play counts and history combine."
           />
           <Choice
             checked={mode === 'replace'}

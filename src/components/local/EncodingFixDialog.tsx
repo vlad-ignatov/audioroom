@@ -158,7 +158,7 @@ export function EncodingFixDialog({ folder, onClose }: Props) {
                 <ul className="flex flex-col gap-1 text-[12px] text-ink-dim">
                   {stage.failed.map((f) => (
                     <li key={f.relative}>
-                      {f.relative} — <span className="text-ink-faint">{f.message}</span>
+                      {f.relative}: <span className="text-ink-faint">{f.message}</span>
                     </li>
                   ))}
                 </ul>
