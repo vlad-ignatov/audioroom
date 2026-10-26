@@ -11,11 +11,10 @@
     "icons": "electron scripts/build-icons.cjs",
     "dev:app": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"electron .\"",
     "electron": "electron .",
-    "package": "npm run build && electron-builder",
-    "package:dir": "npm run build && electron-builder --dir",
     "package:mac": "node scripts/check-target.cjs mac && npm run build && electron-builder --mac",
     "package:win": "node scripts/check-target.cjs win && npm run build && electron-builder --win",
-    "package:linux": "node scripts/check-target.cjs linux && npm run build && electron-builder --linux"
+    "package:linux": "node scripts/check-target.cjs linux && npm run build && electron-builder --linux",
+    "package:unpacked": "npm run build && electron-builder --dir"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
