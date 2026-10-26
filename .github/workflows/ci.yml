@@ -50,8 +50,10 @@ jobs:
             npx playwright test
           fi
 
+      # test-results only holds output from failed attempts, including ones
+      # that passed on the retry.
       - uses: actions/upload-artifact@v7
-        if: failure()
+        if: always()
         with:
           name: test-results-${{ matrix.os }}
           path: test-results
