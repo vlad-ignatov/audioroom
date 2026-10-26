@@ -62,8 +62,9 @@ live in the SQLite database, next to the library). What's left:
 ## Also wanted
 
 - **"Add to applications menu" on Linux.** An AppImage's icon and menu
-  entry stay inside it, so today people install them by hand (see the
-  README). A command, offered only when running as an AppImage, could write
+  entry stay inside it, so today people
+  [install them by hand](docs/installing.md#adding-audioroom-to-the-linux-applications-menu).
+  A command, offered only when running as an AppImage, could write
   `audioroom.desktop` and the icon into `~/.local/share`, with `Exec`
   pointing at `$APPIMAGE`, and update them when the file moves.
 

@@ -1,9 +1,10 @@
 # Notes for coding agents
 
 AudioRoom is an Electron desktop player for internet radio and local music
-files: React 19, TypeScript, Vite, zustand, Web Audio. The README explains
-the design ("How it works"); this file covers what you need to change it
-safely. ROADMAP.md lists what's planned.
+files: React 19, TypeScript, Vite, zustand, Web Audio.
+docs/how-it-works.md explains the design and docs/development.md the
+workflow; this file covers what you need to change it safely. ROADMAP.md
+lists what's planned.
 
 ## Commands
 
