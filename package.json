@@ -48,10 +48,16 @@
   "description": "Internet radio and music player",
   "author": "Vladimir Ignatov",
   "license": "MIT",
+  "homepage": "https://github.com/vlad-ignatov/audioroom",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vlad-ignatov/audioroom.git"
+  },
   "desktopName": "audioroom.desktop",
   "build": {
     "appId": "dev.vlad.audioroom",
     "productName": "AudioRoom",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -65,6 +71,8 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "build/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false,
       "target": [
         {
           "target": "dmg",

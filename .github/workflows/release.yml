@@ -1,0 +1,86 @@
+# Build the macOS, Windows and Linux packages, each on its own OS.
+#
+# Pushing a tag like v0.2.0 also creates a draft GitHub release with the
+# packages attached; review the notes and publish it by hand. Running the
+# workflow by hand (Actions → Release → Run workflow) only builds, and the
+# packages are left as downloadable artifacts of the run.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # Bash on Windows too: PowerShell's npm shim drops the "--" that passes
+    # options through to electron-builder.
+    shell: bash
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+          - os: windows-latest
+            target: win
+          - os: ubuntu-latest
+            target: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Check the tag matches package.json
+        if: github.ref_type == 'tag'
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in package.json ($version)."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      # electron-builder publishes on its own when it sees a tag in CI.
+      # The release job below does that instead, as a draft.
+      - run: npm run package:${{ matrix.target }} -- --publish never
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Create a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" packages/* \
+            --draft --generate-notes --title "AudioRoom ${GITHUB_REF_NAME#v}" \
+            --notes-file .github/release-notes.md

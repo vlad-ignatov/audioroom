@@ -46,7 +46,7 @@
   down the whole mix. The visualizer turns red where it is working.
 - Loudness leveling (ITU-R BS.1770) brings stations and tracks to a similar
   volume.
-- Reverb with five synthesised rooms, and a stereo width control.
+- Reverb with five synthesized rooms, and a stereo width control.
 
 **Desktop**
 
@@ -74,9 +74,34 @@ problems:
   (`/Volumes/Music-1`).
 - Removing the `._` files macOS leaves on network shares after tags are edited.
 
+## Download
+
+Get the latest version from the
+[Releases page](https://github.com/vlad-ignatov/audioroom/releases/latest):
+
+| System | File |
+|---|---|
+| macOS, Apple Silicon | `AudioRoom-<version>-mac-arm64.dmg` |
+| macOS, Intel | `AudioRoom-<version>-mac-x64.dmg` |
+| Windows (x64) | `AudioRoom-<version>-win-x64.exe` |
+| Linux (x64) | `AudioRoom-<version>-linux-x86_64.AppImage` |
+
+The packages aren't signed with a paid developer certificate, so each
+system warns you the first time:
+
+- **macOS** says it "could not verify" AudioRoom. Close the message, open
+  System Settings → Privacy & Security, and click **Open Anyway** next to
+  AudioRoom. Or run `xattr -dr com.apple.quarantine /Applications/AudioRoom.app`
+  once.
+- **Windows** SmartScreen says it "protected your PC". Click **More info**,
+  then **Run anyway**.
+- **Linux:** make the AppImage executable (`chmod +x AudioRoom-*.AppImage`)
+  and run it. On Ubuntu 22.04 and newer, AppImages need `libfuse2`
+  (`libfuse2t64` on 24.04).
+
 ## Building from source
 
-There are no prebuilt downloads yet. You need:
+You need:
 
 - [Node.js](https://nodejs.org/) 22.12 or newer, with npm. Node 20.19 or a
   later 20.x release also works.
@@ -242,7 +267,7 @@ Loudness follows ITU-R BS.1770: K-weighting, 400 ms blocks and two-stage gating.
 The effects rack beside the equalizer adds two effects. Both are in the same
 graph, so the same CORS rule applies to them.
 
-- **Reverb**: a `ConvolverNode` fed an impulse response *synthesised at
+- **Reverb**: a `ConvolverNode` fed an impulse response *synthesized at
   runtime* (Room, Club, Hall, Cathedral, Plate). There are no `.wav` assets,
   and room size is a live control. Plain decaying white noise sounds like
   hiss, so each impulse response also gets a one-pole lowpass whose cutoff

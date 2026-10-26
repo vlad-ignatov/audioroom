@@ -10,7 +10,7 @@ safely. ROADMAP.md lists what's planned.
 | Command | Use |
 |---|---|
 | `npm run dev:app` | Run the app with hot reload |
-| `npm run typecheck` | The only automated check. Run it before every commit |
+| `npm run typecheck` | The only automated check (CI runs it too). Run it before every commit |
 | `npm run package:unpacked` | Build the real app for this computer, without an installer |
 | `npm run icons` | Regenerate every icon size after editing `build/icon.svg` |
 
@@ -61,6 +61,14 @@ work but has never been tested, so don't assume it. Guard platform-specific
 code with `process.platform`, and keep the Windows path working in
 principle. `npm run package:mac`, `package:win` and `package:linux` check
 first whether this machine can build that package.
+
+## Releases
+
+`.github/workflows/release.yml` builds all three packages, each on its
+own OS. To release, bump `version` in `package.json`, commit, and push a
+matching tag (`v0.2.0`). The workflow then makes a draft release with
+the packages and `.github/release-notes.md` at the top; the maintainer
+publishes it. Running the workflow by hand only builds the packages.
 
 ## Testing in the running app
 
