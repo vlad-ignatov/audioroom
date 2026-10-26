@@ -396,3 +396,7 @@ src/api/         radio-browser.info client
 
 Station data comes from [radio-browser.info](https://www.radio-browser.info/),
 a community-maintained directory of internet radio.
+
+## License
+
+[MIT](LICENSE) © Vladimir Ignatov

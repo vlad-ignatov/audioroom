@@ -46,7 +46,8 @@
   "main": "electron/main.cjs",
   "productName": "AudioRoom",
   "description": "Internet radio and music player",
-  "author": "vlad",
+  "author": "Vladimir Ignatov",
+  "license": "MIT",
   "desktopName": "audioroom.desktop",
   "build": {
     "appId": "dev.vlad.audioroom",
