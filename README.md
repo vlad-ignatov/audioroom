@@ -160,25 +160,25 @@ records several things that were measured rather than assumed.
 ### Two audio elements
 
 An equalizer and a visualizer both need the Web Audio API, and Web Audio may
-only process a stream whose server sends an `Access-Control-Allow-Origin` header.
-A cross-origin stream without one does not raise an error when routed through an
-audio graph. It plays **silence**. Worse, `createMediaElementSource()` binds
-an element to the graph *permanently*, and this cannot be undone.
+only process a stream whose server sends an `Access-Control-Allow-Origin`
+header. A cross-origin stream without one does not raise an error when routed
+through an audio graph. It plays **silence**. Worse,
+`createMediaElementSource()` binds an element to the graph *permanently*.
 
-So the engine keeps two audio elements for the life of the page:
+So the engine keeps two audio elements for the life of the window:
 
-- `graphEl` is bound to Web Audio, and plays stations whose servers allow it.
-- `plainEl` is **never** passed to Web Audio, and plays the rest.
+- `graphEl` is bound to Web Audio, and carries every station that allows it.
+- `plainEl` is **never** passed to Web Audio. A station that can't go through
+  the graph still plays on it, with the equalizer and visualizer shown inert
+  and the reason given, rather than playing silence.
 
-Each station is probed before playback and played on whichever element its
-server allows. Stations on the plain path still play. The equalizer and
-visualizer are shown inert, with the reason, rather than silently doing nothing.
-
-The project started as a browser app, and this design comes from browser
-restrictions. The desktop build has since removed most of them: the main
-process adds CORS headers to every response, so every station that plays gets
-the full audio graph, and there is no mixed-content rule. The two elements and
-the probe stay because they cost nothing and still catch dead hosts.
+This comes from the project's start as a browser app, where it mattered: of
+250 of the most-played stations in the directory, 42% were served over plain
+http, which an https page blocks outright, and some of the rest refused CORS.
+The desktop app removes both problems. Its main process adds the CORS header
+to every response, so in practice every station that plays gets the full
+audio graph. The second element and the probe stay as a safety net, and the
+probe still catches dead hosts before playback.
 
 ### The signal chain
 
@@ -331,36 +331,6 @@ than guessed at.
 
 HLS stations carry track data as ID3 tags inside the stream instead, which
 `hls.js` reports separately. That is not wired up yet.
-
-### What was measured, not assumed
-
-These measurements were taken while the project was a browser app. They
-explain why the two-element design exists. 250 of the directory's most-played
-stations were probed with a browser User-Agent:
-
-| | share | consequence in a browser |
-|---|---|---|
-| Served over `https` | 58% | usable on a deployed https site |
-| **`http` only** | **42%** | **blocked as mixed content** |
-| Of the https ones, CORS-enabled | **92%** | equalizer and visualizer work |
-| CORS-refusing | 1% | plays, but no equalizer: the `plainEl` path |
-
-Some servers vary their response by User-Agent. One station refuses `curl`
-outright, but sends `Access-Control-Allow-Origin: *` to a browser. So what a
-station supports is checked at play time, from the app itself, and cached
-for 24 hours rather than permanently.
-
-Tested through the Chrome DevTools Protocol against live servers:
-
-| station | capability | pipeline | analyzer |
-|---|---|---|---|
-| CORS-clean MP3 | `full` | graph | signal present |
-| HLS (`.m3u8`) | `full` | graph | signal present |
-| CORS-refusing ×2 | `playback-only` | plain | n/a, still plays |
-| Dead host | `unavailable` | none | error shown |
-
-HLS avoids both problems: `hls.js` gives the element a same-origin
-MediaSource blob, so the equalizer always works on HLS stations.
 
 ### Other notes
 
