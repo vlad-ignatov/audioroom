@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    // The main process is CommonJS JavaScript; its tests import it as is.
+    "allowJs": true,
+    "checkJs": false,
+    "types": ["node"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["tests", "playwright.config.ts", "vitest.config.ts"]
+}

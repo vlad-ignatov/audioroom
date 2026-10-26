@@ -119,6 +119,8 @@ npm run dev:app
 | `npm run dev:app` | Runs the app with hot reload (Vite dev server plus Electron) |
 | `npm run dev` | Runs the interface in a browser only. Radio works; the local library needs the desktop app. |
 | `npm run typecheck` | Type-checks the project |
+| `npm test` | Runs the unit tests |
+| `npm run test:e2e` | Builds the app and runs the end-to-end tests in Electron |
 | `npm run package:mac` | Builds the macOS `.dmg` files (Apple Silicon and Intel) into `release/` |
 | `npm run package:win` | Builds the Windows installer (x64) into `release/` |
 | `npm run package:linux` | Builds the Linux AppImage (x64) into `release/` |
@@ -396,6 +398,9 @@ a community-maintained directory of internet radio.
 
 Contributions are welcome. [ROADMAP.md](ROADMAP.md) lists what's planned and
 where help is most needed; testing on Windows is the most useful start.
+Before opening a pull request, run `npm run typecheck` and `npm test`.
+[AGENTS.md](AGENTS.md) covers the rules that are easy to break, for people
+and coding agents alike.
 
 ## License
 

@@ -10,11 +10,28 @@ safely. ROADMAP.md lists what's planned.
 | Command | Use |
 |---|---|
 | `npm run dev:app` | Run the app with hot reload |
-| `npm run typecheck` | The only automated check (CI runs it too). Run it before every commit |
+| `npm run typecheck` | Type-check everything, tests included |
+| `npm test` | Unit tests (Vitest), in a second or so |
+| `npm run test:e2e` | Build, then run the real app through Playwright |
 | `npm run package:unpacked` | Build the real app for this computer, without an installer |
 | `npm run icons` | Regenerate every icon size after editing `build/icon.svg` |
 
-There is no test runner and no linter. Check behavior in the running app.
+Run the typecheck and `npm test` before every commit; CI runs all three
+checks on macOS, Linux and Windows. There is no linter.
+
+## Tests
+
+- `tests/unit/`: the interface's logic, in plain Node. Parsers, loudness
+  math, settings. Import from `@/…` as the app does.
+- `tests/main/`: main-process modules, also in plain Node without Electron:
+  the database (on a temporary file), the `media://` handler, tag writing.
+  A module exports what its tests need beside `install`.
+- `tests/e2e/`: the built app in Electron. `launch()` in `tests/e2e/app.ts`
+  starts it on a temporary data folder with the window hidden.
+
+Test what the code promises, not how it does it: the bytes a Range request
+returns, what the database loads after a migration. The audio graph itself
+(EQ, limiter, effects) needs a real AudioContext and is checked by ear.
 
 ## Layout
 
@@ -77,8 +94,8 @@ publishes it. Running the workflow by hand only builds the packages.
 - Some agent shells set `ELECTRON_RUN_AS_NODE=1` (VS Code's does), which
   makes `require('electron')` return a path instead of the API. Unset it
   for Electron commands: `env -u ELECTRON_RUN_AS_NODE npm run dev:app`.
-- Don't test against the user's real data folder. Copy it and point
-  `app.setPath('userData', …)` at the copy.
+- Don't test against the user's real data folder. Copy it and start the
+  app with `AUDIOROOM_DATA_DIR=/path/to/copy`.
 
 ## Writing
 

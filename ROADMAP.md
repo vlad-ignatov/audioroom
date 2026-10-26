@@ -6,8 +6,9 @@ so two people don't build the same thing.
 
 ## Windows testing
 
-AudioRoom should run on Windows, but nobody has tried it yet. A report is
-useful even if everything works. Things worth checking:
+AudioRoom should run on Windows, and CI runs the test suite there, but
+no person has used it yet. A report is useful even if everything works.
+Things worth checking:
 
 - The installer from `npm run package:win`, and starting the app.
 - Radio: searching, playing, the equalizer and the visualizer.

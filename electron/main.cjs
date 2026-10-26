@@ -18,7 +18,17 @@ const tagWriter = require('./tag-writer.cjs')
 
 // Must match server.port in vite.config.ts.
 const DEV_URL = process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5199'
-const isDev = !app.isPackaged
+
+// The end-to-end tests (tests/e2e) start the app with AUDIOROOM_TEST=1: the
+// built interface instead of the dev server, and a window that never shows,
+// so a test run doesn't take the keyboard from whoever is typing.
+const isTest = process.env.AUDIOROOM_TEST === '1'
+const isDev = !app.isPackaged && !isTest
+
+// A data folder other than the usual one: for the tests, and for trying a
+// change against a copy of a real library.
+const dataDir = process.env.AUDIOROOM_DATA_DIR
+if (dataDir) app.setPath('userData', path.resolve(dataDir))
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null
@@ -112,7 +122,7 @@ function createWindow() {
   mainWindow = win
   windowState.track(win)
 
-  win.once('ready-to-show', () => win.show())
+  if (!isTest) win.once('ready-to-show', () => win.show())
 
   // Station homepages belong in the user's browser, not in the app window.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -148,7 +158,7 @@ function createWindow() {
 }
 
 // Before anything reads or writes the data folder.
-migrateDataFolder()
+if (!dataDir) migrateDataFolder()
 
 // Scheme privileges are read once, before ready; registering later is a no-op.
 localFiles.registerScheme()

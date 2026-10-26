@@ -1,5 +1,5 @@
-# Type-check and build every push to main and every pull request. The
-# packages themselves are built by release.yml.
+# Type-check, test and build every push to main and every pull request, on
+# all three systems. The packages themselves are built by release.yml.
 
 name: CI
 
@@ -16,11 +16,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    env:
-      # Type-checking and bundling don't run Electron, so skip its download.
-      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -29,4 +30,29 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
+
+      # Electron needs a display, and Ubuntu 24.04 stops Chromium's sandbox
+      # from creating the user namespaces it runs in.
+      - name: Prepare Linux for Electron
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: End-to-end tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run --auto-servernum npx playwright test
+          else
+            npx playwright test
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results
+          if-no-files-found: ignore

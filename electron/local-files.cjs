@@ -684,4 +684,14 @@ function install(getWindow) {
   ipcMain.handle('read-tags', (_event, paths) => readTagsBatch(paths))
 }
 
-module.exports = { registerScheme, install }
+module.exports = {
+  registerScheme,
+  install,
+  // For the tests (tests/main), which run without Electron.
+  toPath,
+  parseRange,
+  serve,
+  coverRank,
+  listDir,
+  collectAudio,
+}

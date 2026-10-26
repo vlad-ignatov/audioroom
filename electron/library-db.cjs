@@ -19,12 +19,13 @@ let db = null
 
 const SCHEMA_VERSION = 6
 
-function open() {
+/** The database, opened and migrated on first use. Tests pass their own file. */
+function open(file) {
   if (db) return db
   // Required lazily: node:sqlite logs an experimental-feature warning on load,
   // and nothing else in the main process needs it.
   const { DatabaseSync } = require('node:sqlite')
-  db = new DatabaseSync(path.join(app.getPath('userData'), 'library.sqlite'))
+  db = new DatabaseSync(file ?? path.join(app.getPath('userData'), 'library.sqlite'))
   // WAL keeps a crash mid-write from corrupting the file and lets reads and
   // the (frequent, tiny) writes overlap.
   db.exec('PRAGMA journal_mode = WAL')
@@ -328,4 +329,21 @@ function close() {
   db = null
 }
 
-module.exports = { install, close }
+module.exports = {
+  install,
+  close,
+  // For the tests (tests/main), which run without Electron.
+  SCHEMA_VERSION,
+  open,
+  load,
+  write,
+  listFolders,
+  addFolder,
+  removeFolder,
+  listLooseFiles,
+  addLooseFiles,
+  listQueue,
+  setQueue,
+  loadSettings,
+  writeSettings,
+}

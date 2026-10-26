@@ -4,3 +4,5 @@ release
 *.tsbuildinfo
 .DS_Store
 samples
+test-results
+playwright-report

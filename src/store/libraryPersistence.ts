@@ -39,7 +39,7 @@ function writeLocal(stations: Station[]): void {
  * new rows at the end take the next free position. Anything else — a drag,
  * an import that replaced the list — renumbers everything.
  */
-function diff(prev: Station[], next: Station[], end: number): { ops: LibraryWrite; end: number } {
+export function diff(prev: Station[], next: Station[], end: number): { ops: LibraryWrite; end: number } {
   const before = new Map(prev.map((s) => [s.id, s]))
   const nextIds = new Set(next.map((s) => s.id))
   const remove = prev.filter((s) => !nextIds.has(s.id)).map((s) => s.id)

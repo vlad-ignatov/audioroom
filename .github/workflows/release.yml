@@ -51,6 +51,7 @@ jobs:
           fi
 
       - run: npm ci
+      - run: npm test
 
       # electron-builder publishes on its own when it sees a tag in CI.
       # The release job below does that instead, as a draft.
