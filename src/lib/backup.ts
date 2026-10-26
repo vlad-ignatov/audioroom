@@ -4,6 +4,7 @@ import { useEq } from '@/store/eq'
 import { useFx } from '@/store/fx'
 import { useLeveling } from '@/store/leveling'
 import { parsePlaylist } from './playlist'
+import { settings as storage } from './settings'
 
 /**
  * A whole-app backup: the library plus the sound setup, for moving between
@@ -32,7 +33,7 @@ export interface Backup {
 export function createBackup(stations: Station[]): string {
   const settings: Backup['settings'] = {}
   for (const key of Object.keys(SETTINGS) as SettingsKey[]) {
-    const raw = localStorage.getItem(key)
+    const raw = storage.getItem(key)
     if (raw) settings[key] = JSON.parse(raw) as Persisted
   }
   return JSON.stringify(
@@ -90,7 +91,7 @@ export async function restoreSettings(backup: Backup, { sound }: { sound: boolea
 }
 
 async function rehydrate(key: SettingsKey, blob: Persisted): Promise<void> {
-  localStorage.setItem(key, JSON.stringify(blob))
+  storage.setItem(key, JSON.stringify(blob))
   await SETTINGS[key].persist.rehydrate()
 }
 

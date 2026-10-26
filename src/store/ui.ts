@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Station } from '@/types/station'
 import type { DirFile } from '@/lib/desktop'
+import { settings } from '@/lib/settings'
 
 /**
  * Which view and dialogs are showing, and the toast.
@@ -15,11 +16,7 @@ export type View = 'radio' | 'local'
 const VIEW_KEY = 'app.view'
 
 function loadView(): View {
-  try {
-    return localStorage.getItem(VIEW_KEY) === 'local' ? 'local' : 'radio'
-  } catch {
-    return 'radio'
-  }
+  return settings.getItem(VIEW_KEY) === 'local' ? 'local' : 'radio'
 }
 
 interface UiState {
@@ -61,11 +58,7 @@ export const useUi = create<UiState>()((set) => ({
   toast: null,
 
   setView: (view) => {
-    try {
-      localStorage.setItem(VIEW_KEY, view)
-    } catch {
-      // The last tab is a convenience.
-    }
+    settings.setItem(VIEW_KEY, view)
     set({ view })
   },
   setDirectoryOpen: (directoryOpen) => set({ directoryOpen }),

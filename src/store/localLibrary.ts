@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { desktop, playableUrl, type DirFile, type DirListing, type LooseFileEntry, type TrackTags } from '@/lib/desktop'
 import type { Station } from '@/types/station'
+import { settings } from '@/lib/settings'
 
 export type Listing =
   | { status: 'loading' }
@@ -46,7 +47,7 @@ const EXPANDED_KEY = 'local.expanded'
 
 function loadExpanded(): Record<string, true> {
   try {
-    const raw = localStorage.getItem(EXPANDED_KEY)
+    const raw = settings.getItem(EXPANDED_KEY)
     const list = raw ? (JSON.parse(raw) as unknown) : []
     // Trimmed like the roots are: early builds could store a root as "/x/".
     return Array.isArray(list)
@@ -58,11 +59,7 @@ function loadExpanded(): Record<string, true> {
 }
 
 function saveExpanded(expanded: Record<string, true>): void {
-  try {
-    localStorage.setItem(EXPANDED_KEY, JSON.stringify(Object.keys(expanded)))
-  } catch {
-    // Remembering open folders is a convenience.
-  }
+  settings.setItem(EXPANDED_KEY, JSON.stringify(Object.keys(expanded)))
 }
 
 /**

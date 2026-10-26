@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { settings } from '@/lib/settings'
 import { engine } from '@/audio/engine'
 import { DEFAULT_TARGET_LUFS } from '@/audio/loudness'
 
@@ -36,6 +37,7 @@ export const useLeveling = create<LevelingState>()(
     }),
     {
       name: 'player.leveling',
+      storage: createJSONStorage(() => settings),
       version: 1,
       onRehydrateStorage: () => (state) => {
         // The engine is constructed before this store rehydrates, so push the

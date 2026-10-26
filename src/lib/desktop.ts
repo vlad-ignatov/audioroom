@@ -160,6 +160,10 @@ export interface DesktopBridge {
     add(path: string): Promise<FolderAddResult>
     remove(path: string): Promise<string[]>
   }
+  settings: {
+    load(): Record<string, string> | null
+    write(changes: Record<string, string | null>): void
+  }
   library: {
     /**
      * `initialized` is false until the first write ever made; `nextPosition`

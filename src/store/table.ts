@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { settings } from '@/lib/settings'
 export type ColumnId =
   | 'favorite'
   | 'name'
@@ -182,6 +183,7 @@ export const useTable = create<TableState>()(
     }),
     {
       name: 'player.table',
+      storage: createJSONStorage(() => settings),
       version: 2,
       // v1 had an "Audio" column and a capability filter, from when the app
       // ran in a browser and stations differed in what the server allowed.

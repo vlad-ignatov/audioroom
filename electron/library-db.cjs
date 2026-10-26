@@ -17,7 +17,7 @@ const path = require('node:path')
 /** @type {import('node:sqlite').DatabaseSync | null} */
 let db = null
 
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 function open() {
   if (db) return db
@@ -80,6 +80,18 @@ function open() {
       CREATE TABLE IF NOT EXISTS queue (
         position INTEGER PRIMARY KEY,
         path     TEXT NOT NULL
+      );
+    `)
+  }
+  if (version < 6) {
+    // The renderer's settings — EQ, effects, levelling, table layout, volume —
+    // each a key and the string the renderer stored under it. They used to be
+    // in localStorage, which belongs to one origin: the dev server's port and
+    // the packaged app's file:// page each had their own.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       );
     `)
   }
@@ -258,7 +270,46 @@ function setQueue(paths) {
   })
 }
 
+/** Every setting, as `{ key: value }`. */
+function loadSettings() {
+  const rows = open().prepare('SELECT key, value FROM settings').all()
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+}
+
+/** Apply `{ key: value }` changes; a null value removes the key. */
+function writeSettings(changes) {
+  transaction((c) => {
+    const put = c.prepare(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    )
+    const del = c.prepare('DELETE FROM settings WHERE key = ?')
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null) del.run(key)
+      else put.run(key, String(value))
+    }
+  })
+}
+
 function install() {
+  // Synchronous on purpose: the renderer's stores read their settings while
+  // they are created, before the first render. Null tells it the database
+  // is unavailable, so it can fall back to localStorage.
+  ipcMain.on('settings:load', (event) => {
+    try {
+      event.returnValue = loadSettings()
+    } catch (err) {
+      console.error('[settings] could not read', err)
+      event.returnValue = null
+    }
+  })
+  // Fire and forget: the renderer already holds the new values.
+  ipcMain.on('settings:write', (_event, changes) => {
+    try {
+      writeSettings(changes)
+    } catch (err) {
+      console.error('[settings] could not save', err)
+    }
+  })
   ipcMain.handle('library:load', () => load())
   ipcMain.handle('library:write', (_event, ops) => write(ops))
   ipcMain.handle('folders:list', () => listFolders())

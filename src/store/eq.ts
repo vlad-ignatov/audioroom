@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { settings } from '@/lib/settings'
 import { BAND_COUNT, BUILTIN_PRESETS, type EqPreset } from '@/audio/eq'
 import { engine } from '@/audio/engine'
 import { uid } from '@/lib/utils'
@@ -170,6 +171,7 @@ export const useEq = create<EqState>()(
     }),
     {
       name: 'player.eq',
+      storage: createJSONStorage(() => settings),
       version: 2,
       migrate: (persisted, version) => {
         const state = persisted as Pick<EqState, 'activePresetId' | 'customPresets'>

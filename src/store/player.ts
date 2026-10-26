@@ -7,6 +7,7 @@ import { fetchNowPlaying, type NowPlaying, type NowPlayingSource } from '@/audio
 import { clamp } from '@/lib/utils'
 import { isLocalFile } from '@/lib/desktop'
 import { findPlayable } from '@/lib/playable'
+import { settings } from '@/lib/settings'
 
 interface PlayerState {
   status: EngineStatus
@@ -66,33 +67,21 @@ const SELECTED_KEY = 'player.selectedId'
 const SOURCE_KEY = 'player.queueSource'
 
 function loadSource(): QueueSource | null {
-  try {
-    const raw = localStorage.getItem(SOURCE_KEY)
-    return raw === 'stations' || raw === 'tree' || raw === 'queue' ? raw : null
-  } catch {
-    return null
-  }
+  const raw = settings.getItem(SOURCE_KEY)
+  return raw === 'stations' || raw === 'tree' || raw === 'queue' ? raw : null
 }
 
 function loadSelected(): string | null {
-  try {
-    return localStorage.getItem(SELECTED_KEY)
-  } catch {
-    return null
-  }
+  return settings.getItem(SELECTED_KEY)
 }
 
 function saveSelected(id: string | null): void {
-  try {
-    if (id === null) localStorage.removeItem(SELECTED_KEY)
-    else localStorage.setItem(SELECTED_KEY, id)
-  } catch {
-    // Selection is a convenience; losing it is not worth surfacing.
-  }
+  if (id === null) settings.removeItem(SELECTED_KEY)
+  else settings.setItem(SELECTED_KEY, id)
 }
 
 function loadVolume(): number {
-  const raw = localStorage.getItem(VOLUME_KEY)
+  const raw = settings.getItem(VOLUME_KEY)
   const n = raw === null ? NaN : Number(raw)
   return Number.isFinite(n) ? clamp(n, 0, 1) : 0.8
 }
@@ -131,13 +120,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     queueSource: loadSource(),
 
     setQueue: (ids, source) => {
-      if (source !== get().queueSource) {
-        try {
-          localStorage.setItem(SOURCE_KEY, source)
-        } catch {
-          // Like the selection, a convenience.
-        }
-      }
+      if (source !== get().queueSource) settings.setItem(SOURCE_KEY, source)
       set({ queue: ids, queueSource: source })
     },
 
@@ -244,7 +227,7 @@ export const usePlayer = create<PlayerState>()((set, get) => {
     setVolume: (v) => {
       const vol = clamp(v, 0, 1)
       engine.setVolume(vol)
-      localStorage.setItem(VOLUME_KEY, String(vol))
+      settings.setItem(VOLUME_KEY, String(vol))
       set({ volume: vol, muted: vol === 0 ? get().muted : false })
     },
 
@@ -336,7 +319,7 @@ function startNowPlaying(station: Station): void {
  * Persist each loudness reading against the station it came from.
  *
  * Throttled: the meter updates ten times a second, and writing the library that
- * often would thrash localStorage for no benefit.
+ * often would thrash the database for no benefit.
  */
 let lastLoudnessWrite = 0
 engine.setLoudnessListener((lufs) => {

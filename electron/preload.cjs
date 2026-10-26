@@ -153,6 +153,18 @@ contextBridge.exposeInMainWorld('desktop', {
     },
   },
 
+  /** The renderer's settings, kept in SQLite beside the library. */
+  settings: {
+    /** Every setting, or null if the database is unavailable. Synchronous: see src/lib/settings.ts. */
+    load() {
+      return ipcRenderer.sendSync('settings:load')
+    },
+    /** `{ key: value }`, null to remove; not awaited. */
+    write(changes) {
+      ipcRenderer.send('settings:write', changes)
+    },
+  },
+
   /** The station library, kept in SQLite by the main process. */
   library: {
     load() {

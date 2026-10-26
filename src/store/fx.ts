@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { settings } from '@/lib/settings'
 import { engine } from '@/audio/engine'
 import { DEFAULT_REVERB, REVERB_PRESETS, type ImpulseOptions } from '@/audio/fx'
 import { clamp } from '@/lib/utils'
@@ -100,6 +101,7 @@ export const useFx = create<FxState>()(
     }),
     {
       name: 'player.fx',
+      storage: createJSONStorage(() => settings),
       version: 2,
       partialize: (s) => ({
         reverbEnabled: s.reverbEnabled,

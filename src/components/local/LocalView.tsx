@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { desktop } from '@/lib/desktop'
+import { settings } from '@/lib/settings'
 import { LocalToolbar } from './LocalToolbar'
 import { LocalTree } from './LocalTree'
 import { PlayQueue } from './PlayQueue'
@@ -13,21 +14,13 @@ const TREE_MIN = 280
 const KEY_STEP = 24
 
 function loadWidth(): number | null {
-  try {
-    const n = Number(localStorage.getItem(WIDTH_KEY))
-    return Number.isFinite(n) && n >= QUEUE_MIN ? n : null
-  } catch {
-    return null
-  }
+  const n = Number(settings.getItem(WIDTH_KEY))
+  return Number.isFinite(n) && n >= QUEUE_MIN ? n : null
 }
 
 function saveWidth(width: number | null): void {
-  try {
-    if (width === null) localStorage.removeItem(WIDTH_KEY)
-    else localStorage.setItem(WIDTH_KEY, String(Math.round(width)))
-  } catch {
-    // The pane width is a convenience.
-  }
+  if (width === null) settings.removeItem(WIDTH_KEY)
+  else settings.setItem(WIDTH_KEY, String(Math.round(width)))
 }
 
 /**
