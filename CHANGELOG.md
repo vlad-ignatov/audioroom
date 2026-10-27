@@ -10,6 +10,11 @@ page shows them.
 
 ## [Unreleased]
 
+### Changed
+
+- A new app icon: the speaker on a white tile, which stands out in both
+  light and dark Docks and taskbars.
+
 ## [0.1.0] - 2026-10-26
 
 The first public release.

@@ -1,20 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- A graphite bookshelf speaker on a walnut tile. The tile is 824 px inside
-       the 1024 canvas, as macOS expects; `npm run icons` renders every size
-       from this file. -->
+  <!-- A graphite bookshelf speaker on a white tile. The tile is 824 px inside
+       the 1024 canvas, as macOS expects, which leaves room for its shadow;
+       `npm run icons` renders every size from this file. -->
   <defs>
-    <!-- Light at the top, dark at the bottom, like Apple's own icons. -->
-    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#b8834c"/>
-      <stop offset="1" stop-color="#8c5c31"/>
+    <!-- White to Apple's light system gray (systemGray5), lighter at the top
+         like Apple's own icons. -->
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e5e5ea"/>
     </linearGradient>
+    <!-- The shadow from Apple's macOS icon template: 10 px down, 10 px blur,
+         30% black. Without it a white tile vanishes on a light Dock. -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="5" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
     <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffcf5c"/>
       <stop offset="1" stop-color="#f0a63c"/>
     </linearGradient>
     <linearGradient id="cab" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#43434c"/>
-      <stop offset="1" stop-color="#26262c"/>
+      <stop offset="0" stop-color="#4d4d55"/>
+      <stop offset="1" stop-color="#323238"/>
     </linearGradient>
     <radialGradient id="cone" cx="0.5" cy="0.45" r="0.55">
       <stop offset="0" stop-color="#ffd772"/>
@@ -22,21 +28,24 @@
       <stop offset="1" stop-color="#b9741f"/>
     </radialGradient>
   </defs>
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#wood)"/>
-  <!-- The speaker, drawn at its original size and enlarged about the centre. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" filter="url(#shadow)"/>
+  <!-- A hairline edge, for light backgrounds. Inset by half its width, so it
+       stays inside the tile. -->
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#000" stroke-opacity="0.08" stroke-width="2"/>
+  <!-- The speaker, drawn at its original size and enlarged about the center. -->
   <g transform="translate(512 512) scale(1.12) translate(-512 -512)">
     <!-- Cabinet -->
     <rect x="332" y="212" width="360" height="600" rx="52" fill="url(#cab)" stroke="#1d1d22" stroke-width="6"/>
     <!-- Tweeter -->
     <circle cx="512" cy="345" r="62" fill="#17171b"/>
-    <circle cx="512" cy="345" r="58" fill="none" stroke="#5b5b65" stroke-width="8"/>
+    <circle cx="512" cy="345" r="58" fill="none" stroke="#6e6e72" stroke-width="8"/>
     <circle cx="512" cy="345" r="28" fill="url(#amber)"/>
     <!-- Woofer: surround, cone, dust cap -->
-    <circle cx="512" cy="590" r="150" fill="#141417"/>
-    <circle cx="512" cy="590" r="138" fill="none" stroke="#4e4e58" stroke-width="16"/>
+    <circle cx="512" cy="590" r="150" fill="#000000"/>
+    <circle cx="512" cy="590" r="138" fill="none" stroke="#6e6e72" stroke-width="16"/>
     <circle cx="512" cy="590" r="124" fill="url(#cone)"/>
     <circle cx="512" cy="590" r="40" fill="#c9842a"/>
     <!-- Bass port -->
-    <rect x="452" y="764" width="120" height="22" rx="11" fill="#141417"/>
+    <rect x="452" y="764" width="120" height="22" rx="11" fill="#000000" stroke="#6e6e72AA" stroke-width="4"/>
   </g>
 </svg>
